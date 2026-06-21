@@ -1,0 +1,8 @@
+name = "creator-dashboard"
+main = "src/index.ts"
+compatibility_date = "2024-09-09"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "creator-dashboard"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
