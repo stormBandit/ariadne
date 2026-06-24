@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ariadne — content</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="page">
+    <a class="back-link" href="/">&larr; Back to dashboard</a>
+    <header class="top">
+      <h1 id="title">Loading...</h1>
+      <span id="status-badge" class="badge draft">draft</span>
+    </header>
+    <div class="meta" style="margin-bottom: 16px;">
+      <span id="platform"></span>
+      &middot;
+      <a id="source-url" href="#" target="_blank"></a>
+    </div>
+
+    <div class="section">
+      <h2>Links</h2>
+      <div id="link-list"></div>
+      <form id="add-link-form" style="display: flex; gap: 6px; margin-top: 8px;">
+        <select id="link-type" required>
+          <option value="openinapp">OpenInApp</option>
+          <option value="creatorurls">CreatorURLs</option>
+          <option value="affiliate">Affiliate</option>
+          <option value="other">Other</option>
+        </select>
+        <input id="link-label" type="text" placeholder="Label (optional)" />
+        <input id="link-url" type="url" placeholder="https://..." required style="flex: 1;" />
+        <button type="submit" class="small">Add</button>
+      </form>
+    </div>
+
+    <div class="section">
+      <h2>Messages</h2>
+      <div id="message-list"></div>
+      <form id="add-message-form" style="display: flex; flex-direction: column; gap: 6px; margin-top: 8px;">
+        <div style="display: flex; gap: 6px;">
+          <input id="message-platform" type="text" placeholder="Platform (instagram, tiktok...)" />
+          <input id="message-trigger" type="text" placeholder="Trigger word" />
+        </div>
+        <textarea id="message-body" placeholder="Message body" required rows="3"></textarea>
+        <button type="submit" class="small" style="align-self: flex-start;">Add</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+  <script>initContentDetail();</script>
+</body>
+</html>

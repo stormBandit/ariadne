@@ -2,7 +2,22 @@ name = "ariadne"
 main = "src/index.ts"
 compatibility_date = "2024-09-09"
 
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = true
+
 [[d1_databases]]
 binding = "DB"
 database_name = "ariadne"
 database_id = "d6eead52-f6cf-4577-a188-3513b919a532"
+
+[vars]
+YOUTUBE_CHANNEL_ID = "UCOXxphnIyUjdosgso0phlOQ"          # public, reference only
+YOUTUBE_UPLOADS_PLAYLIST_ID = "UUOXxphnIyUjdosgso0phlOQ" # channel ID with UC->UU swap; verified to resolve via the channel page
+
+[triggers]
+# Friday 20:00 UTC = 12:00 PST (UTC-8).
+# Workers cron does not observe DST: during PDT (UTC-7, ~mid-March to
+# early November) this fires at 1PM local instead of 12PM.
+crons = ["0 20 * * 5"]

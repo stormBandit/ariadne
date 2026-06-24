@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ariadne</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="page">
+    <header class="top">
+      <h1>ariadne</h1>
+      <div style="display: flex; gap: 8px;">
+        <button id="sync-youtube" class="secondary">Sync now</button>
+        <a class="button" href="/new">New content</a>
+      </div>
+    </header>
+    <div id="sync-status" class="meta" style="margin-bottom: 12px;"></div>
+
+    <div class="filters">
+      <input type="search" id="search" placeholder="Search by title..." />
+    </div>
+    <div class="filters">
+      <span class="chip active" data-platform-filter="all">All</span>
+      <span class="chip" data-platform-filter="youtube">YouTube</span>
+      <span class="chip" data-platform-filter="instagram">Instagram</span>
+      <span class="chip" data-platform-filter="tiktok">TikTok</span>
+    </div>
+    <div class="filters">
+      <span class="chip active" data-status-filter="all">All</span>
+      <span class="chip" data-status-filter="draft">Draft</span>
+      <span class="chip" data-status-filter="scheduled">Scheduled</span>
+      <span class="chip" data-status-filter="live">Live</span>
+    </div>
+
+    <div id="content-list"></div>
+  </div>
+
+  <script src="/app.js"></script>
+  <script>initDashboard();</script>
+</body>
+</html>

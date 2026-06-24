@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import app from './index';
+import { app } from './index';
 
 const SCHEMA = `
 CREATE TABLE content (

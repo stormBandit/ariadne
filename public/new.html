@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ariadne — new content</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="page">
+    <a class="back-link" href="/">&larr; Back to dashboard</a>
+    <header class="top">
+      <h1>New content</h1>
+    </header>
+
+    <form id="new-content-form">
+      <div class="field">
+        <label for="field-title">Title</label>
+        <input id="field-title" type="text" required />
+      </div>
+      <div class="field">
+        <label for="field-platform">Platform</label>
+        <select id="field-platform" required>
+          <option value="youtube">YouTube</option>
+          <option value="instagram">Instagram</option>
+          <option value="tiktok">TikTok</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="field-publish-date">Publish date</label>
+        <input id="field-publish-date" type="date" />
+      </div>
+      <div class="field">
+        <label for="field-source-url">Source URL</label>
+        <input id="field-source-url" type="url" placeholder="https://youtube.com/watch?v=..." />
+      </div>
+      <button type="submit">Create</button>
+    </form>
+  </div>
+
+  <script src="/app.js"></script>
+  <script>initNewContentForm();</script>
+</body>
+</html>

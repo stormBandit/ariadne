@@ -1,7 +1,11 @@
 import { Hono } from 'hono';
+import { syncYouTubeUploads } from './youtube';
 
 type Bindings = {
   DB: D1Database;
+  ASSETS: Fetcher;
+  YOUTUBE_API_KEY: string;
+  YOUTUBE_UPLOADS_PLAYLIST_ID: string;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -133,4 +137,26 @@ app.delete('/api/messages/:id', async (c) => {
   return c.body(null, 204);
 });
 
-export default app;
+app.post('/api/sync/youtube', async (c) => {
+  try {
+    const result = await syncYouTubeUploads(
+      c.env.DB,
+      c.env.YOUTUBE_API_KEY,
+      c.env.YOUTUBE_UPLOADS_PLAYLIST_ID
+    );
+    return c.json(result);
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : 'sync failed' }, 502);
+  }
+});
+
+app.get('*', (c) => c.env.ASSETS.fetch(c.req.raw));
+
+export { app };
+
+export default {
+  fetch: app.fetch,
+  async scheduled(_event: ScheduledEvent, env: Bindings, _ctx: ExecutionContext) {
+    await syncYouTubeUploads(env.DB, env.YOUTUBE_API_KEY, env.YOUTUBE_UPLOADS_PLAYLIST_ID);
+  },
+};
