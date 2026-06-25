@@ -30,7 +30,9 @@ export async function fetchRecentUploads(
 
   const res = await fetch(url.toString());
   if (!res.ok) {
-    throw new YouTubeApiError(`YouTube API request failed: ${res.status}`);
+    const errorBody = await res.text().catch(() => '');
+    console.error('YouTube API error response:', res.status, errorBody);
+    throw new YouTubeApiError(`YouTube API request failed: ${res.status} ${errorBody}`.trim());
   }
 
   const body = (await res.json()) as PlaylistItemsResponse;

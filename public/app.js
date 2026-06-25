@@ -36,6 +36,24 @@ function statusBadge(status) {
   return span;
 }
 
+function youtubeVideoId(url) {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname.includes('youtu.be')) return parsed.pathname.slice(1);
+    return parsed.searchParams.get('v');
+  } catch {
+    return null;
+  }
+}
+
+function formatDate(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
 // ---------- Dashboard (index.html) ----------
 
 async function initDashboard() {
@@ -69,9 +87,23 @@ async function initDashboard() {
     }
 
     for (const item of filtered) {
+      const wrapper = document.createElement('div');
+
       const card = document.createElement('a');
       card.className = 'card';
       card.href = `/content?id=${item.id}`;
+
+      const videoId = item.platform === 'youtube' ? youtubeVideoId(item.source_url) : null;
+      if (videoId) {
+        const thumb = document.createElement('img');
+        thumb.src = `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
+        thumb.alt = item.title;
+        thumb.style.width = '100%';
+        thumb.style.borderRadius = '8px';
+        thumb.style.marginBottom = '8px';
+        thumb.loading = 'lazy';
+        card.appendChild(thumb);
+      }
 
       const top = document.createElement('div');
       top.className = 'card-top';
@@ -83,10 +115,24 @@ async function initDashboard() {
 
       const meta = document.createElement('div');
       meta.className = 'meta';
-      meta.textContent = [item.platform, item.publish_date].filter(Boolean).join(' · ');
+      meta.textContent = [item.platform, formatDate(item.publish_date)].filter(Boolean).join(' · ');
       card.appendChild(meta);
 
-      list.appendChild(card);
+      wrapper.appendChild(card);
+
+      if (item.source_url) {
+        const sourceLink = document.createElement('a');
+        sourceLink.href = item.source_url;
+        sourceLink.target = '_blank';
+        sourceLink.rel = 'noopener';
+        sourceLink.textContent = 'Watch on YouTube ↗';
+        sourceLink.style.display = 'inline-block';
+        sourceLink.style.margin = '-4px 0 10px';
+        sourceLink.style.fontSize = '13px';
+        wrapper.appendChild(sourceLink);
+      }
+
+      list.appendChild(wrapper);
     }
   }
 
