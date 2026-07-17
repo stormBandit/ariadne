@@ -4,6 +4,7 @@ export interface YouTubeVideo {
   publishedAt: string;
   sourceUrl: string;
   videoType: 'video' | 'short';
+  status: 'live' | 'draft';
 }
 
 export class YouTubeApiError extends Error {}
@@ -18,6 +19,13 @@ interface PlaylistItemsResponse {
   }>;
 }
 
+interface VideosListResponse {
+  items?: Array<{
+    id?: string;
+    status?: { privacyStatus?: string };
+  }>;
+}
+
 // Resolves whether a video ID is a Short by following the /shorts/ redirect.
 // YouTube redirects /shorts/ID to /watch?v=ID for regular videos, and keeps
 // it on /shorts/ID for Shorts.
@@ -28,6 +36,33 @@ async function resolveVideoUrl(videoId: string): Promise<{ sourceUrl: string; vi
     sourceUrl: isShort ? `https://www.youtube.com/shorts/${videoId}` : `https://www.youtube.com/watch?v=${videoId}`,
     videoType: isShort ? 'short' : 'video',
   };
+}
+
+// Fetches privacy status for a batch of video IDs (max 50 per call).
+// Maps privacyStatus: 'public' -> 'live', everything else -> 'draft'.
+async function fetchVideoStatuses(apiKey: string, videoIds: string[]): Promise<Map<string, 'live' | 'draft'>> {
+  const statuses = new Map<string, 'live' | 'draft'>();
+  for (let i = 0; i < videoIds.length; i += 50) {
+    const batch = videoIds.slice(i, i + 50);
+    const url = new URL('https://www.googleapis.com/youtube/v3/videos');
+    url.searchParams.set('part', 'status');
+    url.searchParams.set('id', batch.join(','));
+    url.searchParams.set('key', apiKey);
+
+    const res = await fetch(url.toString());
+    if (!res.ok) {
+      const errorBody = await res.text().catch(() => '');
+      throw new YouTubeApiError(`YouTube API request failed: ${res.status} ${errorBody}`.trim());
+    }
+
+    const body = (await res.json()) as VideosListResponse;
+    for (const item of body.items ?? []) {
+      if (item.id) {
+        statuses.set(item.id, item.status?.privacyStatus === 'public' ? 'live' : 'draft');
+      }
+    }
+  }
+  return statuses;
 }
 
 export async function fetchRecentUploads(
@@ -62,11 +97,19 @@ export async function fetchRecentUploads(
     rawVideos.push({ videoId, title, publishedAt });
   }
 
-  const resolved = await Promise.all(
-    rawVideos.map(async (v) => ({ ...v, ...(await resolveVideoUrl(v.videoId)) }))
-  );
+  const [resolvedUrls, statuses] = await Promise.all([
+    Promise.all(rawVideos.map(async (v) => ({ videoId: v.videoId, ...(await resolveVideoUrl(v.videoId)) }))),
+    fetchVideoStatuses(apiKey, rawVideos.map((v) => v.videoId)),
+  ]);
 
-  return resolved;
+  const urlMap = new Map(resolvedUrls.map((r) => [r.videoId, r]));
+
+  return rawVideos.map((v) => ({
+    ...v,
+    sourceUrl: urlMap.get(v.videoId)?.sourceUrl ?? `https://www.youtube.com/watch?v=${v.videoId}`,
+    videoType: urlMap.get(v.videoId)?.videoType ?? 'video',
+    status: statuses.get(v.videoId) ?? 'live',
+  }));
 }
 
 export interface SyncResult {
@@ -89,31 +132,31 @@ function videoIdFromUrl(sourceUrl: string): string | null {
 }
 
 // Reclassifies existing DB entries by re-running the redirect check and
-// updating source_url + video_type if they've changed.
-async function reclassifyExisting(db: D1Database): Promise<number> {
+// re-fetching status from the API, updating any fields that have changed.
+async function reclassifyExisting(db: D1Database, apiKey: string): Promise<number> {
   const { results } = await db
     .prepare("SELECT id, source_url FROM content WHERE platform = 'youtube'")
     .all<{ id: number; source_url: string }>();
 
   const rows = results.filter((r) => r.source_url);
+  const videoIds = rows.map((r) => videoIdFromUrl(r.source_url)).filter(Boolean) as string[];
+  const idToRow = new Map(rows.map((r) => [videoIdFromUrl(r.source_url), r.id]));
 
-  const updates = await Promise.all(
-    rows.map(async (row) => {
-      const videoId = videoIdFromUrl(row.source_url);
-      if (!videoId) return null;
-      const resolved = await resolveVideoUrl(videoId);
-      return { id: row.id, ...resolved };
-    })
-  );
+  const [resolvedUrls, statuses] = await Promise.all([
+    Promise.all(videoIds.map(async (id) => ({ videoId: id, ...(await resolveVideoUrl(id)) }))),
+    fetchVideoStatuses(apiKey, videoIds),
+  ]);
 
   let reclassified = 0;
-  for (const update of updates) {
-    if (!update) continue;
+  for (const resolved of resolvedUrls) {
+    const rowId = idToRow.get(resolved.videoId);
+    if (rowId === undefined) continue;
+    const status = statuses.get(resolved.videoId) ?? 'live';
     const { meta } = await db
       .prepare(
-        'UPDATE content SET source_url = ?, video_type = ? WHERE id = ? AND (source_url != ? OR video_type != ?)'
+        'UPDATE content SET source_url = ?, video_type = ?, status = ? WHERE id = ? AND (source_url != ? OR video_type != ? OR status != ?)'
       )
-      .bind(update.sourceUrl, update.videoType, update.id, update.sourceUrl, update.videoType)
+      .bind(resolved.sourceUrl, resolved.videoType, status, rowId, resolved.sourceUrl, resolved.videoType, status)
       .run();
     if (meta.changes > 0) reclassified++;
   }
@@ -134,8 +177,8 @@ export async function syncYouTubeUploads(
     // Match on video ID embedded in either watch or shorts URL to avoid
     // re-inserting videos whose source_url we're about to reclassify.
     const existing = await db
-      .prepare("SELECT id FROM content WHERE source_url LIKE ? OR source_url = ?")
-      .bind(`%${video.videoId}%`, video.sourceUrl)
+      .prepare('SELECT id FROM content WHERE source_url LIKE ?')
+      .bind(`%${video.videoId}%`)
       .first();
 
     if (existing) {
@@ -146,15 +189,16 @@ export async function syncYouTubeUploads(
     await db
       .prepare(
         `INSERT INTO content (title, platform, source_url, publish_date, status, video_type)
-         VALUES (?, 'youtube', ?, ?, 'draft', ?)`
+         VALUES (?, 'youtube', ?, ?, ?, ?)`
       )
-      .bind(video.title, video.sourceUrl, video.publishedAt, video.videoType)
+      .bind(video.title, video.sourceUrl, video.publishedAt, video.status, video.videoType)
       .run();
+
     result.inserted++;
     result.insertedTitles.push(video.title);
   }
 
-  result.reclassified = await reclassifyExisting(db);
+  result.reclassified = await reclassifyExisting(db, apiKey);
 
   return result;
 }
