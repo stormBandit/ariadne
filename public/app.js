@@ -41,6 +41,7 @@ function youtubeVideoId(url) {
   try {
     const parsed = new URL(url);
     if (parsed.hostname.includes('youtu.be')) return parsed.pathname.slice(1);
+    if (parsed.pathname.startsWith('/shorts/')) return parsed.pathname.replace('/shorts/', '');
     return parsed.searchParams.get('v');
   } catch {
     return null;
@@ -59,20 +60,17 @@ function formatDate(value) {
 async function initDashboard() {
   const list = qs('content-list');
   const search = qs('search');
-  const platformChips = document.querySelectorAll('[data-platform-filter]');
-  const statusChips = document.querySelectorAll('[data-status-filter]');
+  const typeChips = document.querySelectorAll('[data-type-filter]');
 
   let items = await api('/api/content');
-  let platformFilter = 'all';
-  let statusFilter = 'all';
+  let typeFilter = 'videos';
 
   function render() {
     const term = search.value.trim().toLowerCase();
     const filtered = items.filter((item) => {
       const matchesTerm = !term || item.title.toLowerCase().includes(term);
-      const matchesPlatform = platformFilter === 'all' || item.platform === platformFilter;
-      const matchesStatus = statusFilter === 'all' || item.status === statusFilter;
-      return matchesTerm && matchesPlatform && matchesStatus;
+      const matchesType = typeFilter === 'videos' ? item.video_type !== 'short' : item.video_type === 'short';
+      return matchesTerm && matchesType;
     });
 
     list.innerHTML = '';
@@ -115,7 +113,7 @@ async function initDashboard() {
 
       const meta = document.createElement('div');
       meta.className = 'meta';
-      meta.textContent = [item.platform, formatDate(item.publish_date)].filter(Boolean).join(' · ');
+      meta.textContent = formatDate(item.publish_date);
       card.appendChild(meta);
 
       wrapper.appendChild(card);
@@ -137,19 +135,11 @@ async function initDashboard() {
   }
 
   search.addEventListener('input', render);
-  platformChips.forEach((chip) => {
+  typeChips.forEach((chip) => {
     chip.addEventListener('click', () => {
-      platformChips.forEach((c) => c.classList.remove('active'));
+      typeChips.forEach((c) => c.classList.remove('active'));
       chip.classList.add('active');
-      platformFilter = chip.dataset.platformFilter;
-      render();
-    });
-  });
-  statusChips.forEach((chip) => {
-    chip.addEventListener('click', () => {
-      statusChips.forEach((c) => c.classList.remove('active'));
-      chip.classList.add('active');
-      statusFilter = chip.dataset.statusFilter;
+      typeFilter = chip.dataset.typeFilter;
       render();
     });
   });
@@ -171,9 +161,10 @@ async function initDashboard() {
     syncStatus.textContent = '';
     try {
       const result = await api('/api/sync/youtube', { method: 'POST' });
-      syncStatus.textContent = result.inserted > 0
-        ? `${result.inserted} new video${result.inserted === 1 ? '' : 's'} added.`
-        : 'No new videos.';
+      const parts = [];
+      if (result.inserted > 0) parts.push(`${result.inserted} new video${result.inserted === 1 ? '' : 's'} added`);
+      if (result.reclassified > 0) parts.push(`${result.reclassified} reclassified`);
+      syncStatus.textContent = parts.length > 0 ? parts.join(', ') + '.' : 'No new videos.';
       items = await api('/api/content');
       render();
     } catch (err) {
@@ -309,13 +300,13 @@ function initNewContentForm() {
   qs('new-content-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const title = qs('field-title').value;
-    const platform = qs('field-platform').value;
+    const video_type = qs('field-video-type').value;
     const publish_date = qs('field-publish-date').value;
     const source_url = qs('field-source-url').value;
 
     const content = await api('/api/content', {
       method: 'POST',
-      body: JSON.stringify({ title, platform, publish_date, source_url }),
+      body: JSON.stringify({ title, platform: 'youtube', video_type, publish_date, source_url }),
     });
     window.location.href = `/content?id=${content.id}`;
   });

@@ -18,15 +18,15 @@ app.get('/api/content', async (c) => {
 });
 
 app.post('/api/content', async (c) => {
-  const { title, platform, source_url, publish_date, status } = await c.req.json();
+  const { title, platform, source_url, publish_date, status, video_type } = await c.req.json();
   if (!title || !platform) {
     return c.json({ error: 'title and platform are required' }, 400);
   }
   const { meta } = await c.env.DB.prepare(
-    `INSERT INTO content (title, platform, source_url, publish_date, status)
-     VALUES (?, ?, ?, ?, COALESCE(?, 'draft'))`
+    `INSERT INTO content (title, platform, source_url, publish_date, status, video_type)
+     VALUES (?, ?, ?, ?, COALESCE(?, 'draft'), COALESCE(?, 'video'))`
   )
-    .bind(title, platform, source_url ?? null, publish_date ?? null, status ?? null)
+    .bind(title, platform, source_url ?? null, publish_date ?? null, status ?? null, video_type ?? null)
     .run();
   const row = await c.env.DB.prepare('SELECT * FROM content WHERE id = ?')
     .bind(meta.last_row_id)
@@ -57,17 +57,18 @@ app.get('/api/content/:id', async (c) => {
 
 app.put('/api/content/:id', async (c) => {
   const id = c.req.param('id');
-  const { title, platform, source_url, publish_date, status } = await c.req.json();
+  const { title, platform, source_url, publish_date, status, video_type } = await c.req.json();
   const { meta } = await c.env.DB.prepare(
     `UPDATE content
      SET title = COALESCE(?, title),
          platform = COALESCE(?, platform),
          source_url = COALESCE(?, source_url),
          publish_date = COALESCE(?, publish_date),
-         status = COALESCE(?, status)
+         status = COALESCE(?, status),
+         video_type = COALESCE(?, video_type)
      WHERE id = ?`
   )
-    .bind(title ?? null, platform ?? null, source_url ?? null, publish_date ?? null, status ?? null, id)
+    .bind(title ?? null, platform ?? null, source_url ?? null, publish_date ?? null, status ?? null, video_type ?? null, id)
     .run();
   if (meta.changes === 0) {
     return c.json({ error: 'not found' }, 404);

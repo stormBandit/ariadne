@@ -1,10 +1,11 @@
 CREATE TABLE content (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   title       TEXT NOT NULL,
-  platform    TEXT NOT NULL,        -- 'youtube', 'instagram', 'tiktok', etc.
+  platform    TEXT NOT NULL,        -- 'youtube'
   source_url  TEXT,                 -- original URL (e.g. the YouTube video URL)
   publish_date TEXT,
   status      TEXT DEFAULT 'draft', -- 'draft', 'scheduled', 'live'
+  video_type  TEXT NOT NULL DEFAULT 'video', -- 'video', 'short'
   created_at  TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
