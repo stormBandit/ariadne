@@ -13,10 +13,12 @@
       <h1 id="title">Loading...</h1>
       <span id="status-badge" class="badge draft">draft</span>
     </header>
-    <div class="meta" style="margin-bottom: 16px;">
+    <div class="meta" style="margin-bottom: 8px;">
       <span id="platform"></span>
-      &middot;
-      <a id="source-url" href="#" target="_blank"></a>
+    </div>
+    <div style="display: flex; gap: 6px; margin-bottom: 16px;">
+      <a id="studio-link" href="#" target="_blank" rel="noopener" class="button small secondary" style="display: none;">Go To Studio ↗</a>
+      <a id="watch-link" href="#" target="_blank" rel="noopener" class="button small secondary" style="display: none;">Go To Watch ↗</a>
     </div>
 
     <div class="section">
@@ -36,6 +38,60 @@
         <input id="link-label" type="text" placeholder="Description (optional)" />
         <input id="link-url" type="url" placeholder="https://..." required style="flex: 1;" />
         <button type="submit" class="small">Add</button>
+      </form>
+    </div>
+
+    <div class="section">
+      <h2>Keywords</h2>
+      <div id="keyword-list"></div>
+      <form id="add-keyword-form" style="display: flex; gap: 6px; margin-top: 8px;">
+        <input id="keyword-text" type="text" placeholder="Keyword" required style="flex: 1;" />
+        <input id="keyword-score" type="number" min="0" max="100" placeholder="Score (0-100)" style="width: 140px;" />
+        <button type="submit" class="small">Add</button>
+      </form>
+    </div>
+
+    <div class="section">
+      <h2>Title Testing</h2>
+      <div id="title-test-list"></div>
+      <form id="add-title-test-form" class="test-form" style="margin-top: 16px;">
+        <div id="title-test-variants" class="variant-rows"></div>
+        <button type="button" id="title-test-add-variant" class="small secondary" style="align-self: flex-start;">+ Add variant</button>
+        <div style="display: flex; gap: 6px;">
+          <input id="title-test-start" type="date" title="Start date (optional)" />
+          <input id="title-test-end" type="date" title="End date (optional)" />
+          <select id="title-test-status">
+            <option value="conclusive">Conclusive</option>
+            <option value="inconclusive" selected>Inconclusive (not enough impressions)</option>
+          </select>
+        </div>
+        <textarea id="title-test-notes" placeholder="Notes" rows="2"></textarea>
+        <div>
+          <button type="submit" class="small">Add Title Test</button>
+          <span id="title-test-form-status"></span>
+        </div>
+      </form>
+    </div>
+
+    <div class="section">
+      <h2>Thumbnail Testing</h2>
+      <div id="thumbnail-test-list"></div>
+      <form id="add-thumbnail-test-form" class="test-form" style="margin-top: 16px;">
+        <div id="thumbnail-test-variants" class="variant-rows"></div>
+        <button type="button" id="thumbnail-test-add-variant" class="small secondary" style="align-self: flex-start;">+ Add variant</button>
+        <div style="display: flex; gap: 6px;">
+          <input id="thumbnail-test-start" type="date" title="Start date (optional)" />
+          <input id="thumbnail-test-end" type="date" title="End date (optional)" />
+          <select id="thumbnail-test-status">
+            <option value="conclusive">Conclusive</option>
+            <option value="inconclusive" selected>Inconclusive (not enough impressions)</option>
+          </select>
+        </div>
+        <textarea id="thumbnail-test-notes" placeholder="Notes" rows="2"></textarea>
+        <div>
+          <button type="submit" class="small">Add Thumbnail Test</button>
+          <span id="thumbnail-test-form-status"></span>
+        </div>
       </form>
     </div>
 

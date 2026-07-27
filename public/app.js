@@ -82,6 +82,86 @@ function formatDate(value) {
   return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+function formatDateRange(start, end) {
+  if (!start && !end) return 'Dates not recorded';
+  if (start && end) return `${formatDate(start)} – ${formatDate(end)}`;
+  return formatDate(start || end);
+}
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+function addVariantRow(container, placeholder, inputType = 'text') {
+  const row = document.createElement('div');
+  row.className = 'variant-row';
+
+  if (inputType === 'file') {
+    const preview = document.createElement('img');
+    preview.className = 'variant-preview';
+    preview.style.display = 'none';
+
+    const valueInput = document.createElement('input');
+    valueInput.type = 'file';
+    valueInput.accept = 'image/*';
+    valueInput.addEventListener('change', () => {
+      const file = valueInput.files[0];
+      if (!file) {
+        preview.style.display = 'none';
+        return;
+      }
+      fileToDataUrl(file).then((dataUrl) => {
+        preview.src = dataUrl;
+        preview.style.display = '';
+      });
+    });
+
+    row.appendChild(preview);
+    row.appendChild(valueInput);
+  } else {
+    const valueInput = document.createElement('input');
+    valueInput.type = 'text';
+    valueInput.placeholder = placeholder;
+    row.appendChild(valueInput);
+  }
+
+  const shareInput = document.createElement('input');
+  shareInput.type = 'number';
+  shareInput.min = '0';
+  shareInput.max = '100';
+  shareInput.step = '0.1';
+  shareInput.placeholder = 'Watch time share %';
+  row.appendChild(shareInput);
+
+  container.appendChild(row);
+}
+
+async function readVariantRows(container) {
+  const rows = Array.from(container.querySelectorAll('.variant-row'));
+  const variants = await Promise.all(
+    rows.map(async (row) => {
+      const valueInput = row.querySelector('input[type="text"], input[type="file"]');
+      const shareInput = row.querySelector('input[type="number"]');
+      const value =
+        valueInput.type === 'file'
+          ? valueInput.files[0]
+            ? await fileToDataUrl(valueInput.files[0])
+            : ''
+          : valueInput.value.trim();
+      return {
+        value,
+        watch_time_share: shareInput.value ? Number(shareInput.value) : null,
+      };
+    })
+  );
+  return variants.filter((variant) => variant.value);
+}
+
 // ---------- Dashboard (index.html) ----------
 
 async function initDashboard() {
@@ -138,23 +218,40 @@ async function initDashboard() {
       if (videoId) {
         const thumb = document.createElement('img');
         thumb.className = 'thumbnail';
-        thumb.src = `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
+        thumb.src = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
         thumb.alt = item.title;
         thumb.loading = 'lazy';
         card.appendChild(thumb);
       }
 
-      // Watch on YouTube Link
-      if (item.source_url) {
-        const sourceLink = document.createElement('a');
-        sourceLink.href = item.source_url;
-        sourceLink.target = '_blank';
-        sourceLink.rel = 'noopener';
-        sourceLink.textContent = 'Watch on YouTube ↗';
-        sourceLink.style.display = 'inline-block';
-        sourceLink.style.margin = '-4px 0 10px';
-        sourceLink.style.fontSize = '13px';
-        card.appendChild(sourceLink);
+      // Go To Studio / Go To Watch buttons
+      if (videoId || item.source_url) {
+        const linkRow = document.createElement('div');
+        linkRow.style.display = 'flex';
+        linkRow.style.gap = '6px';
+        linkRow.style.margin = '-4px 0 10px';
+
+        if (videoId) {
+          const studioLink = document.createElement('a');
+          studioLink.href = `https://studio.youtube.com/video/${videoId}/edit`;
+          studioLink.target = '_blank';
+          studioLink.rel = 'noopener';
+          studioLink.className = 'button small secondary';
+          studioLink.textContent = 'Go To Studio ↗';
+          linkRow.appendChild(studioLink);
+        }
+
+        if (item.source_url) {
+          const watchLink = document.createElement('a');
+          watchLink.href = item.source_url;
+          watchLink.target = '_blank';
+          watchLink.rel = 'noopener';
+          watchLink.className = 'button small secondary';
+          watchLink.textContent = 'Go To Watch ↗';
+          linkRow.appendChild(watchLink);
+        }
+
+        card.appendChild(linkRow);
       }
 
       wrapper.appendChild(card);
@@ -214,9 +311,17 @@ async function initContentDetail() {
   qs('title').textContent = content.title;
   qs('platform').textContent = content.platform;
   qs('status-badge').replaceWith(statusBadge(content.status));
+
+  const contentVideoId = content.platform === 'youtube' ? youtubeVideoId(content.source_url) : null;
+  if (contentVideoId) {
+    const studioLink = qs('studio-link');
+    studioLink.href = `https://studio.youtube.com/video/${contentVideoId}/edit`;
+    studioLink.style.display = '';
+  }
   if (content.source_url) {
-    qs('source-url').href = content.source_url;
-    qs('source-url').textContent = content.source_url;
+    const watchLink = qs('watch-link');
+    watchLink.href = content.source_url;
+    watchLink.style.display = '';
   }
 
   renderLinks(content.links);
@@ -298,6 +403,184 @@ async function initContentDetail() {
     renderMessages(content.messages);
     e.target.reset();
   });
+
+  renderKeywords(content.keywords);
+
+  qs('add-keyword-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const keyword = qs('keyword-text').value;
+    const scoreValue = qs('keyword-score').value;
+    const created = await api(`/api/content/${id}/keywords`, {
+      method: 'POST',
+      body: JSON.stringify({ keyword, weighted_score: scoreValue ? Number(scoreValue) : null }),
+    });
+    content.keywords.push(created);
+    renderKeywords(content.keywords);
+    e.target.reset();
+  });
+
+  function renderKeywords(keywords) {
+    const list = qs('keyword-list');
+    list.innerHTML = '';
+    if (keywords.length === 0) {
+      list.innerHTML = '<div class="empty-state">No keywords yet.</div>';
+      return;
+    }
+    const tagList = document.createElement('div');
+    tagList.className = 'tag-list';
+    for (const kw of keywords) {
+      const tag = document.createElement('div');
+      tag.className = 'tag';
+
+      const text = document.createElement('span');
+      text.textContent = kw.keyword;
+      tag.appendChild(text);
+
+      if (kw.weighted_score !== null && kw.weighted_score !== undefined) {
+        const score = document.createElement('span');
+        score.className = 'score';
+        score.textContent = kw.weighted_score;
+        tag.appendChild(score);
+      }
+
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.textContent = '✕';
+      delBtn.addEventListener('click', async () => {
+        await api(`/api/keywords/${kw.id}`, { method: 'DELETE' });
+        content.keywords = content.keywords.filter((k) => k.id !== kw.id);
+        renderKeywords(content.keywords);
+      });
+      tag.appendChild(delBtn);
+
+      tagList.appendChild(tag);
+    }
+    list.appendChild(tagList);
+  }
+
+  function renderTests(prefix, testType) {
+    const list = qs(`${prefix}-list`);
+    const tests = content.tests.filter((t) => t.test_type === testType);
+    list.innerHTML = '';
+    if (tests.length === 0) {
+      list.innerHTML = '<div class="empty-state">No tests yet.</div>';
+      return;
+    }
+    for (const test of tests) {
+      const card = document.createElement('div');
+      card.className = 'test-card';
+
+      const top = document.createElement('div');
+      top.className = 'test-card-top';
+      const dates = document.createElement('span');
+      dates.className = 'test-card-dates';
+      dates.textContent = formatDateRange(test.start_date, test.end_date);
+      top.appendChild(dates);
+      const badge = document.createElement('span');
+      badge.className = `badge ${test.status === 'conclusive' ? 'live' : 'draft'}`;
+      badge.textContent = test.status;
+      top.appendChild(badge);
+      card.appendChild(top);
+
+      for (const variant of test.variants) {
+        const row = document.createElement('div');
+        row.className = 'test-variant';
+        if (testType === 'thumbnail') {
+          const img = document.createElement('img');
+          img.className = 'variant-thumbnail';
+          img.src = variant.value;
+          row.appendChild(img);
+        } else {
+          const value = document.createElement('span');
+          value.textContent = variant.value;
+          row.appendChild(value);
+        }
+        const share = document.createElement('span');
+        share.className = 'share';
+        share.textContent =
+          variant.watch_time_share !== null && variant.watch_time_share !== undefined
+            ? `${variant.watch_time_share}%`
+            : '—';
+        row.appendChild(share);
+        card.appendChild(row);
+      }
+
+      if (test.notes) {
+        const notes = document.createElement('div');
+        notes.className = 'notes';
+        notes.textContent = test.notes;
+        card.appendChild(notes);
+      }
+
+      const actions = document.createElement('div');
+      actions.className = 'test-card-actions';
+      const delBtn = document.createElement('button');
+      delBtn.className = 'small secondary';
+      delBtn.textContent = 'Delete';
+      delBtn.addEventListener('click', async () => {
+        const confirmed = await confirmModal("Delete this test? This can't be undone.");
+        if (!confirmed) return;
+        await api(`/api/tests/${test.id}`, { method: 'DELETE' });
+        content.tests = content.tests.filter((t) => t.id !== test.id);
+        renderTests(prefix, testType);
+      });
+      actions.appendChild(delBtn);
+      card.appendChild(actions);
+
+      list.appendChild(card);
+    }
+  }
+
+  function setupTestSection(prefix, testType, variantPlaceholder, variantInputType = 'text') {
+    const variantsContainer = qs(`${prefix}-variants`);
+    const form = qs(`add-${prefix}-form`);
+    const statusMsg = qs(`${prefix}-form-status`);
+
+    function resetVariantRows() {
+      variantsContainer.innerHTML = '';
+      addVariantRow(variantsContainer, variantPlaceholder, variantInputType);
+      addVariantRow(variantsContainer, variantPlaceholder, variantInputType);
+    }
+    resetVariantRows();
+
+    qs(`${prefix}-add-variant`).addEventListener('click', () => {
+      addVariantRow(variantsContainer, variantPlaceholder, variantInputType);
+    });
+
+    renderTests(prefix, testType);
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      statusMsg.textContent = '';
+      const variants = await readVariantRows(variantsContainer);
+      if (variants.length < 2) {
+        statusMsg.textContent = 'Add at least 2 variants.';
+        return;
+      }
+      try {
+        const test = await api(`/api/content/${id}/tests`, {
+          method: 'POST',
+          body: JSON.stringify({
+            test_type: testType,
+            status: qs(`${prefix}-status`).value,
+            start_date: qs(`${prefix}-start`).value || null,
+            end_date: qs(`${prefix}-end`).value || null,
+            notes: qs(`${prefix}-notes`).value,
+            variants,
+          }),
+        });
+        content.tests.push(test);
+        renderTests(prefix, testType);
+        e.target.reset();
+        resetVariantRows();
+      } catch (err) {
+        statusMsg.textContent = err.message;
+      }
+    });
+  }
+
+  setupTestSection('title-test', 'title', 'Title text');
+  setupTestSection('thumbnail-test', 'thumbnail', 'Thumbnail image', 'file');
 
   function renderLinks(links) {
     const list = qs('link-list');

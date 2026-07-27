@@ -58,7 +58,7 @@ button.secondary, a.button.secondary {
   border: 1px solid var(--border);
 }
 
-button.small {
+.small {
   padding: 4px 10px;
   font-size: 12px;
 }
@@ -253,4 +253,136 @@ button.danger {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tag {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 8px 6px 12px;
+  font-size: 13px;
+}
+
+.tag .score {
+  background: rgba(91,140,255,.15);
+  color: var(--accent);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
+.tag button {
+  background: transparent;
+  color: var(--text-dim);
+  padding: 0 4px;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.test-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 8px;
+}
+
+.test-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.test-card-dates {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.test-variant {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.test-variant:first-of-type {
+  border-top: none;
+}
+
+.test-variant .share {
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.test-card .notes {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-top: 8px;
+}
+
+.test-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.test-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.variant-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.variant-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.variant-row input[type="text"] {
+  flex: 1;
+}
+
+.variant-row input[type="file"] {
+  flex: 1;
+  padding: 6px 8px;
+}
+
+.variant-row input[type="number"] {
+  width: 120px;
+}
+
+.variant-preview {
+  width: 48px;
+  height: 27px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+
+.variant-thumbnail {
+  width: 120px;
+  height: 68px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--border);
 }

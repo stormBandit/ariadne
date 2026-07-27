@@ -31,6 +31,33 @@ CREATE TABLE messages (
   message_body  TEXT NOT NULL,
   created_at    TEXT DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE keywords (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  content_id     INTEGER REFERENCES content(id) ON DELETE CASCADE,
+  keyword        TEXT NOT NULL,
+  weighted_score INTEGER,
+  created_at     TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE tests (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  content_id  INTEGER REFERENCES content(id) ON DELETE CASCADE,
+  test_type   TEXT NOT NULL,
+  status      TEXT NOT NULL DEFAULT 'inconclusive',
+  start_date  TEXT,
+  end_date    TEXT,
+  notes       TEXT,
+  created_at  TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE test_variants (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  test_id           INTEGER REFERENCES tests(id) ON DELETE CASCADE,
+  value             TEXT NOT NULL,
+  watch_time_share  REAL,
+  created_at        TEXT DEFAULT CURRENT_TIMESTAMP
+);
 `;
 
 beforeAll(async () => {
@@ -41,6 +68,9 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
+  await env.DB.exec('DELETE FROM test_variants');
+  await env.DB.exec('DELETE FROM tests');
+  await env.DB.exec('DELETE FROM keywords');
   await env.DB.exec('DELETE FROM messages');
   await env.DB.exec('DELETE FROM links');
   await env.DB.exec('DELETE FROM content');
@@ -254,5 +284,159 @@ describe('messages endpoints', () => {
 
     const missing = await app.request(`/api/messages/${message.id}`, { method: 'DELETE' }, env);
     expect(missing.status).toBe(404);
+  });
+});
+
+describe('keywords endpoints', () => {
+  it('rejects keyword creation without a keyword', async () => {
+    const content = await createContent();
+    const res = await app.request(
+      `/api/content/${content.id}/keywords`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) },
+      env
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('creates a keyword with a weighted score and includes it on the content detail', async () => {
+    const content = await createContent();
+    const created = await app.request(
+      `/api/content/${content.id}/keywords`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keyword: 'prince rupert', weighted_score: 92 }),
+      },
+      env
+    );
+    expect(created.status).toBe(201);
+    const keyword = (await created.json()) as { id: number; keyword: string; weighted_score: number };
+    expect(keyword.keyword).toBe('prince rupert');
+    expect(keyword.weighted_score).toBe(92);
+
+    const res = await app.request(`/api/content/${content.id}`, {}, env);
+    const body = (await res.json()) as any;
+    expect(body.keywords).toHaveLength(1);
+  });
+
+  it('deletes a keyword', async () => {
+    const content = await createContent();
+    const created = await app.request(
+      `/api/content/${content.id}/keywords`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ keyword: 'hidden gem' }) },
+      env
+    );
+    const keyword = (await created.json()) as { id: number };
+
+    const res = await app.request(`/api/keywords/${keyword.id}`, { method: 'DELETE' }, env);
+    expect(res.status).toBe(204);
+
+    const missing = await app.request(`/api/keywords/${keyword.id}`, { method: 'DELETE' }, env);
+    expect(missing.status).toBe(404);
+  });
+});
+
+describe('tests endpoints', () => {
+  it('rejects test creation without test_type or with fewer than 2 variants', async () => {
+    const content = await createContent();
+    const res = await app.request(
+      `/api/content/${content.id}/tests`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ test_type: 'title', variants: [{ value: 'only one' }] }),
+      },
+      env
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a variant missing a value', async () => {
+    const content = await createContent();
+    const res = await app.request(
+      `/api/content/${content.id}/tests`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ test_type: 'title', variants: [{ value: 'A' }, { value: '' }] }),
+      },
+      env
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('creates a title test with variants and includes it on the content detail', async () => {
+    const content = await createContent();
+    const created = await app.request(
+      `/api/content/${content.id}/tests`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          test_type: 'title',
+          status: 'conclusive',
+          start_date: '2026-07-15',
+          end_date: '2026-07-20',
+          notes: 'curiosity gap won',
+          variants: [
+            { value: "You Won't Believe What We Saw", watch_time_share: 62 },
+            { value: 'The Hidden Gem We Found', watch_time_share: 38 },
+          ],
+        }),
+      },
+      env
+    );
+    expect(created.status).toBe(201);
+    const test = (await created.json()) as { id: number; variants: any[] };
+    expect(test.variants).toHaveLength(2);
+
+    const res = await app.request(`/api/content/${content.id}`, {}, env);
+    const body = (await res.json()) as any;
+    expect(body.tests).toHaveLength(1);
+    expect(body.tests[0].test_type).toBe('title');
+    expect(body.tests[0].variants).toHaveLength(2);
+  });
+
+  it('defaults status to inconclusive', async () => {
+    const content = await createContent();
+    const created = await app.request(
+      `/api/content/${content.id}/tests`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          test_type: 'thumbnail',
+          variants: [{ value: 'thumb-a.jpg' }, { value: 'thumb-b.jpg' }],
+        }),
+      },
+      env
+    );
+    const test = (await created.json()) as { status: string };
+    expect(test.status).toBe('inconclusive');
+  });
+
+  it('deletes a test and cascades to its variants', async () => {
+    const content = await createContent();
+    const created = await app.request(
+      `/api/content/${content.id}/tests`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          test_type: 'title',
+          variants: [{ value: 'A' }, { value: 'B' }],
+        }),
+      },
+      env
+    );
+    const test = (await created.json()) as { id: number };
+
+    const res = await app.request(`/api/tests/${test.id}`, { method: 'DELETE' }, env);
+    expect(res.status).toBe(204);
+
+    const { results } = await env.DB.prepare('SELECT * FROM test_variants WHERE test_id = ?')
+      .bind(test.id)
+      .all();
+    expect(results).toHaveLength(0);
   });
 });

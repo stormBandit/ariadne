@@ -54,7 +54,28 @@ app.get('/api/content/:id', async (c) => {
   )
     .bind(id)
     .all();
-  return c.json({ ...content, links, messages });
+  const { results: keywords } = await c.env.DB.prepare(
+    'SELECT * FROM keywords WHERE content_id = ? ORDER BY created_at'
+  )
+    .bind(id)
+    .all();
+  const { results: tests } = await c.env.DB.prepare(
+    'SELECT * FROM tests WHERE content_id = ? ORDER BY created_at'
+  )
+    .bind(id)
+    .all<{ id: number }>();
+  const { results: variants } = await c.env.DB.prepare(
+    `SELECT test_variants.* FROM test_variants
+     JOIN tests ON tests.id = test_variants.test_id
+     WHERE tests.content_id = ? ORDER BY test_variants.created_at`
+  )
+    .bind(id)
+    .all<{ test_id: number }>();
+  const testsWithVariants = tests.map((test) => ({
+    ...test,
+    variants: variants.filter((v) => v.test_id === test.id),
+  }));
+  return c.json({ ...content, links, messages, keywords, tests: testsWithVariants });
 });
 
 app.put('/api/content/:id', async (c) => {
@@ -153,6 +174,75 @@ app.post('/api/content/:id/messages', async (c) => {
 app.delete('/api/messages/:id', async (c) => {
   const id = c.req.param('id');
   const { meta } = await c.env.DB.prepare('DELETE FROM messages WHERE id = ?').bind(id).run();
+  if (meta.changes === 0) {
+    return c.json({ error: 'not found' }, 404);
+  }
+  return c.body(null, 204);
+});
+
+app.post('/api/content/:id/keywords', async (c) => {
+  const contentId = c.req.param('id');
+  const { keyword, weighted_score } = await c.req.json();
+  if (!keyword) {
+    return c.json({ error: 'keyword is required' }, 400);
+  }
+  const { meta } = await c.env.DB.prepare(
+    'INSERT INTO keywords (content_id, keyword, weighted_score) VALUES (?, ?, ?)'
+  )
+    .bind(contentId, keyword, weighted_score ?? null)
+    .run();
+  const row = await c.env.DB.prepare('SELECT * FROM keywords WHERE id = ?')
+    .bind(meta.last_row_id)
+    .first();
+  return c.json(row, 201);
+});
+
+app.delete('/api/keywords/:id', async (c) => {
+  const id = c.req.param('id');
+  const { meta } = await c.env.DB.prepare('DELETE FROM keywords WHERE id = ?').bind(id).run();
+  if (meta.changes === 0) {
+    return c.json({ error: 'not found' }, 404);
+  }
+  return c.body(null, 204);
+});
+
+app.post('/api/content/:id/tests', async (c) => {
+  const contentId = c.req.param('id');
+  const { test_type, status, start_date, end_date, notes, variants } = await c.req.json();
+  if (!test_type || !Array.isArray(variants) || variants.length < 2) {
+    return c.json({ error: 'test_type and at least 2 variants are required' }, 400);
+  }
+  if (variants.some((v) => !v.value)) {
+    return c.json({ error: 'every variant requires a value' }, 400);
+  }
+  const { meta } = await c.env.DB.prepare(
+    `INSERT INTO tests (content_id, test_type, status, start_date, end_date, notes)
+     VALUES (?, ?, COALESCE(?, 'inconclusive'), ?, ?, ?)`
+  )
+    .bind(contentId, test_type, status ?? null, start_date ?? null, end_date ?? null, notes ?? null)
+    .run();
+  const testId = meta.last_row_id;
+
+  for (const variant of variants) {
+    await c.env.DB.prepare(
+      'INSERT INTO test_variants (test_id, value, watch_time_share) VALUES (?, ?, ?)'
+    )
+      .bind(testId, variant.value, variant.watch_time_share ?? null)
+      .run();
+  }
+
+  const test = await c.env.DB.prepare('SELECT * FROM tests WHERE id = ?').bind(testId).first();
+  const { results: savedVariants } = await c.env.DB.prepare(
+    'SELECT * FROM test_variants WHERE test_id = ? ORDER BY created_at'
+  )
+    .bind(testId)
+    .all();
+  return c.json({ ...test, variants: savedVariants }, 201);
+});
+
+app.delete('/api/tests/:id', async (c) => {
+  const id = c.req.param('id');
+  const { meta } = await c.env.DB.prepare('DELETE FROM tests WHERE id = ?').bind(id).run();
   if (meta.changes === 0) {
     return c.json({ error: 'not found' }, 404);
   }

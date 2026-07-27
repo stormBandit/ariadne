@@ -26,3 +26,30 @@ CREATE TABLE messages (
   message_body  TEXT NOT NULL,
   created_at    TEXT DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE keywords (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  content_id     INTEGER REFERENCES content(id) ON DELETE CASCADE,
+  keyword        TEXT NOT NULL,
+  weighted_score INTEGER, -- TubeBuddy "weighted overall score", out of 100
+  created_at     TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE tests (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  content_id  INTEGER REFERENCES content(id) ON DELETE CASCADE,
+  test_type   TEXT NOT NULL,                       -- 'title', 'thumbnail'
+  status      TEXT NOT NULL DEFAULT 'inconclusive', -- 'conclusive', 'inconclusive'
+  start_date  TEXT,
+  end_date    TEXT,
+  notes       TEXT,
+  created_at  TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE test_variants (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  test_id           INTEGER REFERENCES tests(id) ON DELETE CASCADE,
+  value             TEXT NOT NULL, -- title text, or thumbnail description/URL
+  watch_time_share  REAL,          -- percentage, e.g. 62.0; null if inconclusive
+  created_at        TEXT DEFAULT CURRENT_TIMESTAMP
+);
