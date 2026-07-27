@@ -100,13 +100,19 @@ input, select, textarea {
   border-color: var(--accent);
 }
 
+.content-list {
+  margin: auto; 
+}
+
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 14px;
   margin-bottom: 10px;
-  display: block;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   text-decoration: none;
   color: var(--text);
 }
@@ -115,7 +121,7 @@ input, select, textarea {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 8px;
+  gap: 20px;
 }
 
 .card h3 {
@@ -123,9 +129,15 @@ input, select, textarea {
   font-size: 16px;
 }
 
-.card .meta {
+.card .pub-date {
   font-size: 13px;
   color: var(--text-dim);
+}
+
+.card .thumbnail {
+  margin: auto;
+  border-radius: 8px;
+  margin-bottom: 8px;
 }
 
 .badge {

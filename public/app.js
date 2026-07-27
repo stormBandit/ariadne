@@ -118,18 +118,7 @@ async function initDashboard() {
       card.className = 'card';
       card.href = `/content?id=${item.id}`;
 
-      const videoId = item.platform === 'youtube' ? youtubeVideoId(item.source_url) : null;
-      if (videoId) {
-        const thumb = document.createElement('img');
-        thumb.src = `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
-        thumb.alt = item.title;
-        thumb.style.width = '100%';
-        thumb.style.borderRadius = '8px';
-        thumb.style.marginBottom = '8px';
-        thumb.loading = 'lazy';
-        card.appendChild(thumb);
-      }
-
+      // Title
       const top = document.createElement('div');
       top.className = 'card-top';
       const title = document.createElement('h3');
@@ -138,13 +127,24 @@ async function initDashboard() {
       top.appendChild(statusBadge(item.status));
       card.appendChild(top);
 
-      const meta = document.createElement('div');
-      meta.className = 'meta';
-      meta.textContent = formatDate(item.publish_date);
-      card.appendChild(meta);
+      // Published Date
+      const publishedDate = document.createElement('div');
+      publishedDate.className = 'pub-date';
+      publishedDate.textContent = formatDate(item.publish_date);
+      card.appendChild(publishedDate);
 
-      wrapper.appendChild(card);
+      // Thumbnail
+      const videoId = item.platform === 'youtube' ? youtubeVideoId(item.source_url) : null;
+      if (videoId) {
+        const thumb = document.createElement('img');
+        thumb.className = 'thumbnail';
+        thumb.src = `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
+        thumb.alt = item.title;
+        thumb.loading = 'lazy';
+        card.appendChild(thumb);
+      }
 
+      // Watch on YouTube Link
       if (item.source_url) {
         const sourceLink = document.createElement('a');
         sourceLink.href = item.source_url;
@@ -154,9 +154,10 @@ async function initDashboard() {
         sourceLink.style.display = 'inline-block';
         sourceLink.style.margin = '-4px 0 10px';
         sourceLink.style.fontSize = '13px';
-        wrapper.appendChild(sourceLink);
+        card.appendChild(sourceLink);
       }
 
+      wrapper.appendChild(card);
       list.appendChild(wrapper);
     }
   }
