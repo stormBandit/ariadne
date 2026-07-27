@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { syncYouTubeUploads } from './youtube';
+import { syncYouTubeUploads, videoIdFromUrl } from './youtube';
 import { createDeepLink } from './openinapp';
 
 type Bindings = {
@@ -14,31 +14,32 @@ const app = new Hono<{ Bindings: Bindings }>();
 
 app.get('/api/content', async (c) => {
   const { results } = await c.env.DB.prepare(
-    'SELECT * FROM content ORDER BY created_at DESC'
+    'SELECT * FROM youtube_videos ORDER BY created_at DESC'
   ).all();
   return c.json(results);
 });
 
 app.post('/api/content', async (c) => {
-  const { title, platform, source_url, publish_date, status, video_type } = await c.req.json();
-  if (!title || !platform) {
-    return c.json({ error: 'title and platform are required' }, 400);
+  const { title, source_url, video_id, publish_date, status, video_type } = await c.req.json();
+  const videoId = video_id ?? (source_url ? videoIdFromUrl(source_url) : null);
+  if (!title || !videoId) {
+    return c.json({ error: 'title is required, and video_id (or a parseable source_url) is required' }, 400);
   }
-  const { meta } = await c.env.DB.prepare(
-    `INSERT INTO content (title, platform, source_url, publish_date, status, video_type)
+  await c.env.DB.prepare(
+    `INSERT INTO youtube_videos (video_id, title, source_url, publish_date, status, video_type)
      VALUES (?, ?, ?, ?, COALESCE(?, 'draft'), COALESCE(?, 'video'))`
   )
-    .bind(title, platform, source_url ?? null, publish_date ?? null, status ?? null, video_type ?? null)
+    .bind(videoId, title, source_url ?? null, publish_date ?? null, status ?? null, video_type ?? null)
     .run();
-  const row = await c.env.DB.prepare('SELECT * FROM content WHERE id = ?')
-    .bind(meta.last_row_id)
+  const row = await c.env.DB.prepare('SELECT * FROM youtube_videos WHERE video_id = ?')
+    .bind(videoId)
     .first();
   return c.json(row, 201);
 });
 
 app.get('/api/content/:id', async (c) => {
   const id = c.req.param('id');
-  const content = await c.env.DB.prepare('SELECT * FROM content WHERE id = ?')
+  const content = await c.env.DB.prepare('SELECT * FROM youtube_videos WHERE video_id = ?')
     .bind(id)
     .first();
   if (!content) {
@@ -80,29 +81,28 @@ app.get('/api/content/:id', async (c) => {
 
 app.put('/api/content/:id', async (c) => {
   const id = c.req.param('id');
-  const { title, platform, source_url, publish_date, status, video_type } = await c.req.json();
+  const { title, source_url, publish_date, status, video_type } = await c.req.json();
   const { meta } = await c.env.DB.prepare(
-    `UPDATE content
+    `UPDATE youtube_videos
      SET title = COALESCE(?, title),
-         platform = COALESCE(?, platform),
          source_url = COALESCE(?, source_url),
          publish_date = COALESCE(?, publish_date),
          status = COALESCE(?, status),
          video_type = COALESCE(?, video_type)
-     WHERE id = ?`
+     WHERE video_id = ?`
   )
-    .bind(title ?? null, platform ?? null, source_url ?? null, publish_date ?? null, status ?? null, video_type ?? null, id)
+    .bind(title ?? null, source_url ?? null, publish_date ?? null, status ?? null, video_type ?? null, id)
     .run();
   if (meta.changes === 0) {
     return c.json({ error: 'not found' }, 404);
   }
-  const row = await c.env.DB.prepare('SELECT * FROM content WHERE id = ?').bind(id).first();
+  const row = await c.env.DB.prepare('SELECT * FROM youtube_videos WHERE video_id = ?').bind(id).first();
   return c.json(row);
 });
 
 app.delete('/api/content/:id', async (c) => {
   const id = c.req.param('id');
-  const { meta } = await c.env.DB.prepare('DELETE FROM content WHERE id = ?').bind(id).run();
+  const { meta } = await c.env.DB.prepare('DELETE FROM youtube_videos WHERE video_id = ?').bind(id).run();
   if (meta.changes === 0) {
     return c.json({ error: 'not found' }, 404);
   }

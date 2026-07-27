@@ -63,18 +63,6 @@ function statusBadge(status) {
   return span;
 }
 
-function youtubeVideoId(url) {
-  if (!url) return null;
-  try {
-    const parsed = new URL(url);
-    if (parsed.hostname.includes('youtu.be')) return parsed.pathname.slice(1);
-    if (parsed.pathname.startsWith('/shorts/')) return parsed.pathname.replace('/shorts/', '');
-    return parsed.searchParams.get('v');
-  } catch {
-    return null;
-  }
-}
-
 function formatDate(value) {
   if (!value) return '';
   const date = new Date(value);
@@ -210,7 +198,7 @@ async function initDashboard() {
 
       const card = document.createElement('a');
       card.className = 'card';
-      card.href = `/content?id=${item.id}`;
+      card.href = `/content?id=${item.video_id}`;
 
       // Title
       const top = document.createElement('div');
@@ -228,7 +216,7 @@ async function initDashboard() {
       card.appendChild(publishedDate);
 
       // Thumbnail
-      const videoId = item.platform === 'youtube' ? youtubeVideoId(item.source_url) : null;
+      const videoId = item.video_id;
       if (videoId) {
         const thumb = document.createElement('img');
         thumb.className = 'thumbnail';
@@ -324,13 +312,11 @@ async function initContentDetail() {
   let editingTestId = null;
 
   qs('title').textContent = content.title;
-  qs('platform').textContent = content.platform;
   qs('status-badge').replaceWith(statusBadge(content.status));
 
-  const contentVideoId = content.platform === 'youtube' ? youtubeVideoId(content.source_url) : null;
-  if (contentVideoId) {
+  if (content.video_id) {
     const studioLink = qs('studio-link');
-    studioLink.href = `https://studio.youtube.com/video/${contentVideoId}/edit`;
+    studioLink.href = `https://studio.youtube.com/video/${content.video_id}/edit`;
     studioLink.style.display = '';
   }
   if (content.source_url) {
@@ -886,8 +872,8 @@ function initNewContentForm() {
 
     const content = await api('/api/content', {
       method: 'POST',
-      body: JSON.stringify({ title, platform: 'youtube', video_type, publish_date, source_url }),
+      body: JSON.stringify({ title, video_type, publish_date, source_url }),
     });
-    window.location.href = `/content?id=${content.id}`;
+    window.location.href = `/content?id=${content.video_id}`;
   });
 }

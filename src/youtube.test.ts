@@ -4,10 +4,9 @@ import { app } from './index';
 import { fetchRecentUploads, syncYouTubeUploads } from './youtube';
 
 const SCHEMA = `
-CREATE TABLE content (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+CREATE TABLE youtube_videos (
+  video_id    TEXT PRIMARY KEY,
   title       TEXT NOT NULL,
-  platform    TEXT NOT NULL,
   source_url  TEXT,
   publish_date TEXT,
   status      TEXT DEFAULT 'draft',
@@ -29,7 +28,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  await env.DB.exec('DELETE FROM content');
+  await env.DB.exec('DELETE FROM youtube_videos');
 });
 
 function mockPlaylistItems(
@@ -119,16 +118,17 @@ describe('syncYouTubeUploads', () => {
     expect(result.inserted).toBe(3);
     expect(result.skipped).toBe(0);
 
-    const { results } = await env.DB.prepare('SELECT * FROM content').all();
+    const { results } = await env.DB.prepare('SELECT * FROM youtube_videos').all();
     expect(results).toHaveLength(3);
-    expect(results.every((r: any) => r.platform === 'youtube' && r.status === 'draft')).toBe(true);
+    expect(results.every((r: any) => r.status === 'draft')).toBe(true);
+    expect(results.map((r: any) => r.video_id).sort()).toEqual(['v1', 'v2', 'v3']);
   });
 
-  it('does not duplicate videos already stored by source_url', async () => {
+  it('does not duplicate videos already stored by video_id', async () => {
     await env.DB.prepare(
-      `INSERT INTO content (title, platform, source_url, status) VALUES (?, 'youtube', ?, 'draft')`
+      `INSERT INTO youtube_videos (video_id, title, source_url, status) VALUES (?, ?, ?, 'draft')`
     )
-      .bind('Existing', 'https://www.youtube.com/watch?v=v1')
+      .bind('v1', 'Existing', 'https://www.youtube.com/watch?v=v1')
       .run();
 
     mockPlaylistItems([
@@ -141,7 +141,7 @@ describe('syncYouTubeUploads', () => {
     expect(result.inserted).toBe(2);
     expect(result.skipped).toBe(1);
 
-    const { results } = await env.DB.prepare('SELECT * FROM content').all();
+    const { results } = await env.DB.prepare('SELECT * FROM youtube_videos').all();
     expect(results).toHaveLength(3);
   });
 

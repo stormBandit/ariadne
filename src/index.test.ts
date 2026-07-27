@@ -3,10 +3,9 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { app } from './index';
 
 const SCHEMA = `
-CREATE TABLE content (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+CREATE TABLE youtube_videos (
+  video_id    TEXT PRIMARY KEY,
   title       TEXT NOT NULL,
-  platform    TEXT NOT NULL,
   source_url  TEXT,
   publish_date TEXT,
   status      TEXT DEFAULT 'draft',
@@ -16,7 +15,7 @@ CREATE TABLE content (
 
 CREATE TABLE links (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  content_id  INTEGER REFERENCES content(id) ON DELETE CASCADE,
+  content_id  TEXT REFERENCES youtube_videos(video_id) ON DELETE CASCADE,
   type        TEXT NOT NULL,
   label       TEXT,
   url         TEXT NOT NULL,
@@ -25,7 +24,7 @@ CREATE TABLE links (
 
 CREATE TABLE messages (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
-  content_id    INTEGER REFERENCES content(id) ON DELETE CASCADE,
+  content_id    TEXT REFERENCES youtube_videos(video_id) ON DELETE CASCADE,
   platform      TEXT,
   trigger_word  TEXT,
   message_body  TEXT NOT NULL,
@@ -34,7 +33,7 @@ CREATE TABLE messages (
 
 CREATE TABLE keywords (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
-  content_id     INTEGER REFERENCES content(id) ON DELETE CASCADE,
+  content_id     TEXT REFERENCES youtube_videos(video_id) ON DELETE CASCADE,
   keyword        TEXT NOT NULL,
   weighted_score INTEGER,
   created_at     TEXT DEFAULT CURRENT_TIMESTAMP
@@ -42,7 +41,7 @@ CREATE TABLE keywords (
 
 CREATE TABLE tests (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  content_id  INTEGER REFERENCES content(id) ON DELETE CASCADE,
+  content_id  TEXT REFERENCES youtube_videos(video_id) ON DELETE CASCADE,
   test_type   TEXT NOT NULL,
   status      TEXT NOT NULL DEFAULT 'inconclusive',
   start_date  TEXT,
@@ -73,7 +72,7 @@ beforeEach(async () => {
   await env.DB.exec('DELETE FROM keywords');
   await env.DB.exec('DELETE FROM messages');
   await env.DB.exec('DELETE FROM links');
-  await env.DB.exec('DELETE FROM content');
+  await env.DB.exec('DELETE FROM youtube_videos');
 });
 
 async function createContent(overrides: Partial<Record<string, unknown>> = {}) {
@@ -84,13 +83,14 @@ async function createContent(overrides: Partial<Record<string, unknown>> = {}) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         title: 'Test Video',
-        platform: 'youtube',
+        video_id: 'abc123',
+        source_url: 'https://www.youtube.com/watch?v=abc123',
         ...overrides,
       }),
     },
     env
   );
-  return res.json() as Promise<{ id: number }>;
+  return res.json() as Promise<{ video_id: string }>;
 }
 
 describe('content endpoints', () => {
@@ -104,7 +104,7 @@ describe('content endpoints', () => {
     expect(rows[0].status).toBe('draft');
   });
 
-  it('rejects content creation without title/platform', async () => {
+  it('rejects content creation without title or video_id', async () => {
     const res = await app.request(
       '/api/content',
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) },
@@ -116,7 +116,7 @@ describe('content endpoints', () => {
   it('fetches one content piece with its links and messages', async () => {
     const content = await createContent();
     await app.request(
-      `/api/content/${content.id}/links`,
+      `/api/content/${content.video_id}/links`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -125,7 +125,7 @@ describe('content endpoints', () => {
       env
     );
     await app.request(
-      `/api/content/${content.id}/messages`,
+      `/api/content/${content.video_id}/messages`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -134,7 +134,7 @@ describe('content endpoints', () => {
       env
     );
 
-    const res = await app.request(`/api/content/${content.id}`, {}, env);
+    const res = await app.request(`/api/content/${content.video_id}`, {}, env);
     expect(res.status).toBe(200);
     const body = (await res.json()) as any;
     expect(body.links).toHaveLength(1);
@@ -149,7 +149,7 @@ describe('content endpoints', () => {
   it('updates a content piece', async () => {
     const content = await createContent();
     const res = await app.request(
-      `/api/content/${content.id}`,
+      `/api/content/${content.video_id}`,
       {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -166,7 +166,7 @@ describe('content endpoints', () => {
   it('deletes content and cascades to links/messages', async () => {
     const content = await createContent();
     await app.request(
-      `/api/content/${content.id}/links`,
+      `/api/content/${content.video_id}/links`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -175,11 +175,11 @@ describe('content endpoints', () => {
       env
     );
 
-    const del = await app.request(`/api/content/${content.id}`, { method: 'DELETE' }, env);
+    const del = await app.request(`/api/content/${content.video_id}`, { method: 'DELETE' }, env);
     expect(del.status).toBe(204);
 
     const { results } = await env.DB.prepare('SELECT * FROM links WHERE content_id = ?')
-      .bind(content.id)
+      .bind(content.video_id)
       .all();
     expect(results).toHaveLength(0);
   });
@@ -189,7 +189,7 @@ describe('links endpoints', () => {
   it('rejects link creation without type/url', async () => {
     const content = await createContent();
     const res = await app.request(
-      `/api/content/${content.id}/links`,
+      `/api/content/${content.video_id}/links`,
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) },
       env
     );
@@ -199,7 +199,7 @@ describe('links endpoints', () => {
   it('updates a link', async () => {
     const content = await createContent();
     const created = await app.request(
-      `/api/content/${content.id}/links`,
+      `/api/content/${content.video_id}/links`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -237,7 +237,7 @@ describe('links endpoints', () => {
   it('deletes a link', async () => {
     const content = await createContent();
     const created = await app.request(
-      `/api/content/${content.id}/links`,
+      `/api/content/${content.video_id}/links`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -259,7 +259,7 @@ describe('messages endpoints', () => {
   it('rejects message creation without message_body', async () => {
     const content = await createContent();
     const res = await app.request(
-      `/api/content/${content.id}/messages`,
+      `/api/content/${content.video_id}/messages`,
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) },
       env
     );
@@ -269,7 +269,7 @@ describe('messages endpoints', () => {
   it('deletes a message', async () => {
     const content = await createContent();
     const created = await app.request(
-      `/api/content/${content.id}/messages`,
+      `/api/content/${content.video_id}/messages`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -291,7 +291,7 @@ describe('keywords endpoints', () => {
   it('rejects keyword creation without a keyword', async () => {
     const content = await createContent();
     const res = await app.request(
-      `/api/content/${content.id}/keywords`,
+      `/api/content/${content.video_id}/keywords`,
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) },
       env
     );
@@ -301,7 +301,7 @@ describe('keywords endpoints', () => {
   it('creates a keyword with a weighted score and includes it on the content detail', async () => {
     const content = await createContent();
     const created = await app.request(
-      `/api/content/${content.id}/keywords`,
+      `/api/content/${content.video_id}/keywords`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -314,7 +314,7 @@ describe('keywords endpoints', () => {
     expect(keyword.keyword).toBe('prince rupert');
     expect(keyword.weighted_score).toBe(92);
 
-    const res = await app.request(`/api/content/${content.id}`, {}, env);
+    const res = await app.request(`/api/content/${content.video_id}`, {}, env);
     const body = (await res.json()) as any;
     expect(body.keywords).toHaveLength(1);
   });
@@ -322,7 +322,7 @@ describe('keywords endpoints', () => {
   it('deletes a keyword', async () => {
     const content = await createContent();
     const created = await app.request(
-      `/api/content/${content.id}/keywords`,
+      `/api/content/${content.video_id}/keywords`,
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ keyword: 'hidden gem' }) },
       env
     );
@@ -340,7 +340,7 @@ describe('tests endpoints', () => {
   it('rejects test creation without test_type or with fewer than 2 variants', async () => {
     const content = await createContent();
     const res = await app.request(
-      `/api/content/${content.id}/tests`,
+      `/api/content/${content.video_id}/tests`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -354,7 +354,7 @@ describe('tests endpoints', () => {
   it('rejects a variant missing a value', async () => {
     const content = await createContent();
     const res = await app.request(
-      `/api/content/${content.id}/tests`,
+      `/api/content/${content.video_id}/tests`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -368,7 +368,7 @@ describe('tests endpoints', () => {
   it('creates a title test with variants and includes it on the content detail', async () => {
     const content = await createContent();
     const created = await app.request(
-      `/api/content/${content.id}/tests`,
+      `/api/content/${content.video_id}/tests`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -390,7 +390,7 @@ describe('tests endpoints', () => {
     const test = (await created.json()) as { id: number; variants: any[] };
     expect(test.variants).toHaveLength(2);
 
-    const res = await app.request(`/api/content/${content.id}`, {}, env);
+    const res = await app.request(`/api/content/${content.video_id}`, {}, env);
     const body = (await res.json()) as any;
     expect(body.tests).toHaveLength(1);
     expect(body.tests[0].test_type).toBe('title');
@@ -400,7 +400,7 @@ describe('tests endpoints', () => {
   it('defaults status to inconclusive', async () => {
     const content = await createContent();
     const created = await app.request(
-      `/api/content/${content.id}/tests`,
+      `/api/content/${content.video_id}/tests`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -418,7 +418,7 @@ describe('tests endpoints', () => {
   it('updates a test, replacing its variants wholesale', async () => {
     const content = await createContent();
     const created = await app.request(
-      `/api/content/${content.id}/tests`,
+      `/api/content/${content.video_id}/tests`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -463,7 +463,7 @@ describe('tests endpoints', () => {
   it('rejects a test update with fewer than 2 variants', async () => {
     const content = await createContent();
     const created = await app.request(
-      `/api/content/${content.id}/tests`,
+      `/api/content/${content.video_id}/tests`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -501,7 +501,7 @@ describe('tests endpoints', () => {
   it('deletes a test and cascades to its variants', async () => {
     const content = await createContent();
     const created = await app.request(
-      `/api/content/${content.id}/tests`,
+      `/api/content/${content.video_id}/tests`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

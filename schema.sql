@@ -1,7 +1,6 @@
-CREATE TABLE content (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+CREATE TABLE youtube_videos (
+  video_id    TEXT PRIMARY KEY,     -- YouTube's own video ID, e.g. 'Xnk2Budn0zA'
   title       TEXT NOT NULL,
-  platform    TEXT NOT NULL,        -- 'youtube'
   source_url  TEXT,                 -- original URL (e.g. the YouTube video URL)
   publish_date TEXT,
   status      TEXT DEFAULT 'draft', -- 'draft', 'scheduled', 'live'
@@ -11,7 +10,7 @@ CREATE TABLE content (
 
 CREATE TABLE links (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  content_id  INTEGER REFERENCES content(id) ON DELETE CASCADE,
+  content_id  TEXT REFERENCES youtube_videos(video_id) ON DELETE CASCADE,
   type        TEXT NOT NULL, -- 'openinapp', 'creatorurls', 'affiliate', 'other'
   label       TEXT,
   url         TEXT NOT NULL,
@@ -20,7 +19,7 @@ CREATE TABLE links (
 
 CREATE TABLE messages (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
-  content_id    INTEGER REFERENCES content(id) ON DELETE CASCADE,
+  content_id    TEXT REFERENCES youtube_videos(video_id) ON DELETE CASCADE,
   platform      TEXT,         -- 'instagram', 'facebook', 'tiktok', etc.
   trigger_word  TEXT,         -- word someone DMs to trigger automation
   message_body  TEXT NOT NULL,
@@ -29,7 +28,7 @@ CREATE TABLE messages (
 
 CREATE TABLE keywords (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
-  content_id     INTEGER REFERENCES content(id) ON DELETE CASCADE,
+  content_id     TEXT REFERENCES youtube_videos(video_id) ON DELETE CASCADE,
   keyword        TEXT NOT NULL,
   weighted_score INTEGER, -- TubeBuddy "weighted overall score", out of 100
   created_at     TEXT DEFAULT CURRENT_TIMESTAMP
@@ -37,7 +36,7 @@ CREATE TABLE keywords (
 
 CREATE TABLE tests (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  content_id  INTEGER REFERENCES content(id) ON DELETE CASCADE,
+  content_id  TEXT REFERENCES youtube_videos(video_id) ON DELETE CASCADE,
   test_type   TEXT NOT NULL,                       -- 'title', 'thumbnail'
   status      TEXT NOT NULL DEFAULT 'inconclusive', -- 'conclusive', 'inconclusive'
   start_date  TEXT,

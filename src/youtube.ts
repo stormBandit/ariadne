@@ -120,7 +120,7 @@ export interface SyncResult {
   insertedTitles: string[];
 }
 
-function videoIdFromUrl(sourceUrl: string): string | null {
+export function videoIdFromUrl(sourceUrl: string): string | null {
   try {
     const parsed = new URL(sourceUrl);
     if (parsed.hostname.includes('youtu.be')) return parsed.pathname.slice(1);
@@ -135,12 +135,10 @@ function videoIdFromUrl(sourceUrl: string): string | null {
 // re-fetching status from the API, updating any fields that have changed.
 async function reclassifyExisting(db: D1Database, apiKey: string): Promise<number> {
   const { results } = await db
-    .prepare("SELECT id, source_url FROM content WHERE platform = 'youtube'")
-    .all<{ id: number; source_url: string }>();
+    .prepare('SELECT video_id FROM youtube_videos')
+    .all<{ video_id: string }>();
 
-  const rows = results.filter((r) => r.source_url);
-  const videoIds = rows.map((r) => videoIdFromUrl(r.source_url)).filter(Boolean) as string[];
-  const idToRow = new Map(rows.map((r) => [videoIdFromUrl(r.source_url), r.id]));
+  const videoIds = results.map((r) => r.video_id);
 
   const [resolvedUrls, statuses] = await Promise.all([
     Promise.all(videoIds.map(async (id) => ({ videoId: id, ...(await resolveVideoUrl(id)) }))),
@@ -149,14 +147,12 @@ async function reclassifyExisting(db: D1Database, apiKey: string): Promise<numbe
 
   let reclassified = 0;
   for (const resolved of resolvedUrls) {
-    const rowId = idToRow.get(resolved.videoId);
-    if (rowId === undefined) continue;
     const status = statuses.get(resolved.videoId) ?? 'live';
     const { meta } = await db
       .prepare(
-        'UPDATE content SET source_url = ?, video_type = ?, status = ? WHERE id = ? AND (source_url != ? OR video_type != ? OR status != ?)'
+        'UPDATE youtube_videos SET source_url = ?, video_type = ?, status = ? WHERE video_id = ? AND (source_url != ? OR video_type != ? OR status != ?)'
       )
-      .bind(resolved.sourceUrl, resolved.videoType, status, rowId, resolved.sourceUrl, resolved.videoType, status)
+      .bind(resolved.sourceUrl, resolved.videoType, status, resolved.videoId, resolved.sourceUrl, resolved.videoType, status)
       .run();
     if (meta.changes > 0) reclassified++;
   }
@@ -174,11 +170,9 @@ export async function syncYouTubeUploads(
   const result: SyncResult = { fetched: videos.length, inserted: 0, skipped: 0, reclassified: 0, insertedTitles: [] };
 
   for (const video of videos) {
-    // Match on video ID embedded in either watch or shorts URL to avoid
-    // re-inserting videos whose source_url we're about to reclassify.
     const existing = await db
-      .prepare('SELECT id FROM content WHERE source_url LIKE ?')
-      .bind(`%${video.videoId}%`)
+      .prepare('SELECT video_id FROM youtube_videos WHERE video_id = ?')
+      .bind(video.videoId)
       .first();
 
     if (existing) {
@@ -188,10 +182,10 @@ export async function syncYouTubeUploads(
 
     await db
       .prepare(
-        `INSERT INTO content (title, platform, source_url, publish_date, status, video_type)
-         VALUES (?, 'youtube', ?, ?, ?, ?)`
+        `INSERT INTO youtube_videos (video_id, title, source_url, publish_date, status, video_type)
+         VALUES (?, ?, ?, ?, ?, ?)`
       )
-      .bind(video.title, video.sourceUrl, video.publishedAt, video.status, video.videoType)
+      .bind(video.videoId, video.title, video.sourceUrl, video.publishedAt, video.status, video.videoType)
       .run();
 
     result.inserted++;
