@@ -240,6 +240,48 @@ app.post('/api/content/:id/tests', async (c) => {
   return c.json({ ...test, variants: savedVariants }, 201);
 });
 
+app.put('/api/tests/:id', async (c) => {
+  const id = c.req.param('id');
+  const existing = await c.env.DB.prepare('SELECT id FROM tests WHERE id = ?').bind(id).first();
+  if (!existing) {
+    return c.json({ error: 'not found' }, 404);
+  }
+  const { status, start_date, end_date, notes, variants } = await c.req.json();
+  if (!Array.isArray(variants) || variants.length < 2 || variants.some((v) => !v.value)) {
+    return c.json({ error: 'at least 2 variants with a value are required' }, 400);
+  }
+  await c.env.DB.prepare(
+    `UPDATE tests
+     SET status = COALESCE(?, status),
+         start_date = COALESCE(?, start_date),
+         end_date = COALESCE(?, end_date),
+         notes = COALESCE(?, notes)
+     WHERE id = ?`
+  )
+    .bind(status ?? null, start_date ?? null, end_date ?? null, notes ?? null, id)
+    .run();
+
+  // Variants are always replaced wholesale rather than diffed, since edits
+  // come from the UI as a full variant list (add/remove/edit all collapse
+  // into one submit).
+  await c.env.DB.prepare('DELETE FROM test_variants WHERE test_id = ?').bind(id).run();
+  for (const variant of variants) {
+    await c.env.DB.prepare(
+      'INSERT INTO test_variants (test_id, value, watch_time_share) VALUES (?, ?, ?)'
+    )
+      .bind(id, variant.value, variant.watch_time_share ?? null)
+      .run();
+  }
+
+  const test = await c.env.DB.prepare('SELECT * FROM tests WHERE id = ?').bind(id).first();
+  const { results: savedVariants } = await c.env.DB.prepare(
+    'SELECT * FROM test_variants WHERE test_id = ? ORDER BY created_at'
+  )
+    .bind(id)
+    .all();
+  return c.json({ ...test, variants: savedVariants });
+});
+
 app.delete('/api/tests/:id', async (c) => {
   const id = c.req.param('id');
   const { meta } = await c.env.DB.prepare('DELETE FROM tests WHERE id = ?').bind(id).run();

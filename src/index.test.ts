@@ -415,6 +415,89 @@ describe('tests endpoints', () => {
     expect(test.status).toBe('inconclusive');
   });
 
+  it('updates a test, replacing its variants wholesale', async () => {
+    const content = await createContent();
+    const created = await app.request(
+      `/api/content/${content.id}/tests`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          test_type: 'title',
+          status: 'inconclusive',
+          notes: 'not enough data yet',
+          variants: [{ value: 'A' }, { value: 'B' }],
+        }),
+      },
+      env
+    );
+    const test = (await created.json()) as { id: number };
+
+    const res = await app.request(
+      `/api/tests/${test.id}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'conclusive',
+          start_date: '2026-07-15',
+          end_date: '2026-07-20',
+          notes: 'A won',
+          variants: [
+            { value: 'A', watch_time_share: 62 },
+            { value: 'B', watch_time_share: 38 },
+            { value: 'C', watch_time_share: 0 },
+          ],
+        }),
+      },
+      env
+    );
+    expect(res.status).toBe(200);
+    const updated = (await res.json()) as { status: string; notes: string; variants: any[] };
+    expect(updated.status).toBe('conclusive');
+    expect(updated.notes).toBe('A won');
+    expect(updated.variants).toHaveLength(3);
+    expect(updated.variants.map((v: any) => v.value)).toEqual(['A', 'B', 'C']);
+  });
+
+  it('rejects a test update with fewer than 2 variants', async () => {
+    const content = await createContent();
+    const created = await app.request(
+      `/api/content/${content.id}/tests`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ test_type: 'title', variants: [{ value: 'A' }, { value: 'B' }] }),
+      },
+      env
+    );
+    const test = (await created.json()) as { id: number };
+
+    const res = await app.request(
+      `/api/tests/${test.id}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ variants: [{ value: 'A' }] }),
+      },
+      env
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 404 updating a missing test', async () => {
+    const res = await app.request(
+      '/api/tests/999999',
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ variants: [{ value: 'A' }, { value: 'B' }] }),
+      },
+      env
+    );
+    expect(res.status).toBe(404);
+  });
+
   it('deletes a test and cascades to its variants', async () => {
     const content = await createContent();
     const created = await app.request(

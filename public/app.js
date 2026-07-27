@@ -97,14 +97,23 @@ function fileToDataUrl(file) {
   });
 }
 
-function addVariantRow(container, placeholder, inputType = 'text') {
+function addVariantRow(container, placeholder, inputType = 'text', initial = null) {
   const row = document.createElement('div');
   row.className = 'variant-row';
+  // For file inputs, a browser can't be made to "pre-select" an existing
+  // image, so we remember the original value here and fall back to it in
+  // readVariantRows() if the user doesn't choose a replacement file.
+  row.dataset.originalValue = (initial && initial.value) || '';
 
   if (inputType === 'file') {
     const preview = document.createElement('img');
     preview.className = 'variant-preview';
-    preview.style.display = 'none';
+    if (initial && initial.value) {
+      preview.src = initial.value;
+      preview.style.display = '';
+    } else {
+      preview.style.display = 'none';
+    }
 
     const valueInput = document.createElement('input');
     valueInput.type = 'file';
@@ -112,7 +121,8 @@ function addVariantRow(container, placeholder, inputType = 'text') {
     valueInput.addEventListener('change', () => {
       const file = valueInput.files[0];
       if (!file) {
-        preview.style.display = 'none';
+        preview.style.display = row.dataset.originalValue ? '' : 'none';
+        if (row.dataset.originalValue) preview.src = row.dataset.originalValue;
         return;
       }
       fileToDataUrl(file).then((dataUrl) => {
@@ -127,6 +137,7 @@ function addVariantRow(container, placeholder, inputType = 'text') {
     const valueInput = document.createElement('input');
     valueInput.type = 'text';
     valueInput.placeholder = placeholder;
+    valueInput.value = (initial && initial.value) || '';
     row.appendChild(valueInput);
   }
 
@@ -136,6 +147,9 @@ function addVariantRow(container, placeholder, inputType = 'text') {
   shareInput.max = '100';
   shareInput.step = '0.1';
   shareInput.placeholder = 'Watch time share %';
+  if (initial && initial.watch_time_share !== null && initial.watch_time_share !== undefined) {
+    shareInput.value = initial.watch_time_share;
+  }
   row.appendChild(shareInput);
 
   container.appendChild(row);
@@ -151,7 +165,7 @@ async function readVariantRows(container) {
         valueInput.type === 'file'
           ? valueInput.files[0]
             ? await fileToDataUrl(valueInput.files[0])
-            : ''
+            : row.dataset.originalValue || ''
           : valueInput.value.trim();
       return {
         value,
@@ -307,6 +321,7 @@ async function initContentDetail() {
   const id = new URLSearchParams(window.location.search).get('id');
   const content = await api(`/api/content/${id}`);
   let editingLinkId = null;
+  let editingTestId = null;
 
   qs('title').textContent = content.title;
   qs('platform').textContent = content.platform;
@@ -458,6 +473,12 @@ async function initContentDetail() {
     list.appendChild(tagList);
   }
 
+  function variantConfigFor(testType) {
+    return testType === 'thumbnail'
+      ? { placeholder: 'Thumbnail image', inputType: 'file' }
+      : { placeholder: 'Title text', inputType: 'text' };
+  }
+
   function renderTests(prefix, testType) {
     const list = qs(`${prefix}-list`);
     const tests = content.tests.filter((t) => t.test_type === testType);
@@ -466,9 +487,117 @@ async function initContentDetail() {
       list.innerHTML = '<div class="empty-state">No tests yet.</div>';
       return;
     }
+    const { placeholder, inputType } = variantConfigFor(testType);
+
     for (const test of tests) {
       const card = document.createElement('div');
       card.className = 'test-card';
+
+      if (editingTestId === test.id) {
+        const variantsContainer = document.createElement('div');
+        variantsContainer.className = 'variant-rows';
+        for (const variant of test.variants) {
+          addVariantRow(variantsContainer, placeholder, inputType, variant);
+        }
+        card.appendChild(variantsContainer);
+
+        const addVariantBtn = document.createElement('button');
+        addVariantBtn.type = 'button';
+        addVariantBtn.className = 'small secondary';
+        addVariantBtn.style.marginTop = '6px';
+        addVariantBtn.textContent = '+ Add variant';
+        addVariantBtn.addEventListener('click', () => {
+          addVariantRow(variantsContainer, placeholder, inputType);
+        });
+        card.appendChild(addVariantBtn);
+
+        const fieldsRow = document.createElement('div');
+        fieldsRow.style.display = 'flex';
+        fieldsRow.style.gap = '6px';
+        fieldsRow.style.marginTop = '8px';
+
+        const startInput = document.createElement('input');
+        startInput.type = 'date';
+        startInput.title = 'Start date (optional)';
+        startInput.value = test.start_date || '';
+        fieldsRow.appendChild(startInput);
+
+        const endInput = document.createElement('input');
+        endInput.type = 'date';
+        endInput.title = 'End date (optional)';
+        endInput.value = test.end_date || '';
+        fieldsRow.appendChild(endInput);
+
+        const statusSelect = document.createElement('select');
+        for (const s of ['conclusive', 'inconclusive']) {
+          const opt = document.createElement('option');
+          opt.value = s;
+          opt.textContent = s === 'inconclusive' ? 'Inconclusive (not enough impressions)' : 'Conclusive';
+          opt.selected = s === test.status;
+          statusSelect.appendChild(opt);
+        }
+        fieldsRow.appendChild(statusSelect);
+        card.appendChild(fieldsRow);
+
+        const notesInput = document.createElement('textarea');
+        notesInput.rows = 2;
+        notesInput.placeholder = 'Notes';
+        notesInput.style.marginTop = '8px';
+        notesInput.style.width = '100%';
+        notesInput.value = test.notes || '';
+        card.appendChild(notesInput);
+
+        const editStatusMsg = document.createElement('div');
+        editStatusMsg.className = 'notes';
+
+        const editActions = document.createElement('div');
+        editActions.className = 'test-card-actions';
+
+        const saveBtn = document.createElement('button');
+        saveBtn.className = 'small';
+        saveBtn.textContent = 'Save';
+        saveBtn.addEventListener('click', async () => {
+          const variants = await readVariantRows(variantsContainer);
+          if (variants.length < 2) {
+            editStatusMsg.textContent = 'Add at least 2 variants.';
+            return;
+          }
+          try {
+            const updated = await api(`/api/tests/${test.id}`, {
+              method: 'PUT',
+              body: JSON.stringify({
+                status: statusSelect.value,
+                start_date: startInput.value || null,
+                end_date: endInput.value || null,
+                notes: notesInput.value,
+                variants,
+              }),
+            });
+            const idx = content.tests.findIndex((t) => t.id === test.id);
+            content.tests[idx] = updated;
+            editingTestId = null;
+            renderTests(prefix, testType);
+          } catch (err) {
+            editStatusMsg.textContent = err.message;
+          }
+        });
+        editActions.appendChild(saveBtn);
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'small secondary';
+        cancelBtn.textContent = 'Cancel';
+        cancelBtn.addEventListener('click', () => {
+          editingTestId = null;
+          renderTests(prefix, testType);
+        });
+        editActions.appendChild(cancelBtn);
+
+        card.appendChild(editStatusMsg);
+        card.appendChild(editActions);
+
+        list.appendChild(card);
+        continue;
+      }
 
       const top = document.createElement('div');
       top.className = 'test-card-top';
@@ -514,6 +643,16 @@ async function initContentDetail() {
 
       const actions = document.createElement('div');
       actions.className = 'test-card-actions';
+
+      const editBtn = document.createElement('button');
+      editBtn.className = 'small secondary';
+      editBtn.textContent = 'Edit';
+      editBtn.addEventListener('click', () => {
+        editingTestId = test.id;
+        renderTests(prefix, testType);
+      });
+      actions.appendChild(editBtn);
+
       const delBtn = document.createElement('button');
       delBtn.className = 'small secondary';
       delBtn.textContent = 'Delete';
@@ -538,7 +677,6 @@ async function initContentDetail() {
 
     function resetVariantRows() {
       variantsContainer.innerHTML = '';
-      addVariantRow(variantsContainer, variantPlaceholder, variantInputType);
       addVariantRow(variantsContainer, variantPlaceholder, variantInputType);
     }
     resetVariantRows();

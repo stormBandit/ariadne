@@ -11,6 +11,7 @@ CREATE TABLE content (
   source_url  TEXT,
   publish_date TEXT,
   status      TEXT DEFAULT 'draft',
+  video_type  TEXT NOT NULL DEFAULT 'video',
   created_at  TEXT DEFAULT CURRENT_TIMESTAMP
 );
 `;
@@ -19,6 +20,12 @@ beforeAll(async () => {
   await env.DB.prepare(SCHEMA.trim()).run();
   fetchMock.activate();
   fetchMock.disableNetConnect();
+  // Persistent mocks for the /shorts/ redirect check and the videos.list status
+  // lookup that fetchRecentUploads/reclassifyExisting always make alongside
+  // playlistItems. They're generic (any video id, any batch), so registering
+  // them once here covers every test below.
+  mockShortsRedirect();
+  mockVideoStatuses('private');
 });
 
 beforeEach(async () => {
@@ -49,6 +56,31 @@ function mockPlaylistItemsError(status: number) {
     .reply(status, { error: 'mocked failure' });
 }
 
+// undici's mock reply never performs a real HTTP redirect, so res.url stays
+// on the requested /shorts/<id> URL — every test video therefore resolves
+// as video_type 'short'. None of the assertions below check video_type, so
+// this is just satisfying resolveVideoUrl's fetch, not modeling real
+// YouTube redirect behavior.
+function mockShortsRedirect() {
+  fetchMock
+    .get('https://www.youtube.com')
+    .intercept({ path: /\/shorts\// })
+    .reply(200, '')
+    .persist();
+}
+
+function mockVideoStatuses(privacyStatus: string) {
+  fetchMock
+    .get('https://www.googleapis.com')
+    .intercept({ path: /\/youtube\/v3\/videos/ })
+    .reply(200, (opts) => {
+      const query = opts.path.split('?')[1] || '';
+      const ids = (new URLSearchParams(query).get('id') || '').split(',').filter(Boolean);
+      return { items: ids.map((id) => ({ id, status: { privacyStatus } })) };
+    })
+    .persist();
+}
+
 describe('fetchRecentUploads', () => {
   it('parses videos from the API response', async () => {
     mockPlaylistItems([
@@ -60,7 +92,11 @@ describe('fetchRecentUploads', () => {
         videoId: 'abc123',
         title: 'Video One',
         publishedAt: '2026-01-01T00:00:00Z',
-        sourceUrl: 'https://www.youtube.com/watch?v=abc123',
+        // mockShortsRedirect() never performs a real redirect, so every test
+        // video resolves as a short — see its comment above.
+        sourceUrl: 'https://www.youtube.com/shorts/abc123',
+        videoType: 'short',
+        status: 'draft',
       },
     ]);
   });
