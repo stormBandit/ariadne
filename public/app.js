@@ -29,6 +29,33 @@ function copyToClipboard(text, button) {
   });
 }
 
+function confirmModal(message) {
+  return new Promise((resolve) => {
+    const overlay = qs('confirm-modal');
+    qs('confirm-modal-message').textContent = message;
+    overlay.style.display = 'flex';
+
+    const confirmBtn = qs('confirm-modal-confirm');
+    const cancelBtn = qs('confirm-modal-cancel');
+
+    function cleanup(result) {
+      overlay.style.display = 'none';
+      confirmBtn.removeEventListener('click', onConfirm);
+      cancelBtn.removeEventListener('click', onCancel);
+      resolve(result);
+    }
+    function onConfirm() {
+      cleanup(true);
+    }
+    function onCancel() {
+      cleanup(false);
+    }
+
+    confirmBtn.addEventListener('click', onConfirm);
+    cancelBtn.addEventListener('click', onCancel);
+  });
+}
+
 function statusBadge(status) {
   const span = document.createElement('span');
   span.className = `badge ${status}`;
@@ -181,6 +208,7 @@ async function initDashboard() {
 async function initContentDetail() {
   const id = new URLSearchParams(window.location.search).get('id');
   const content = await api(`/api/content/${id}`);
+  let editingLinkId = null;
 
   qs('title').textContent = content.title;
   qs('platform').textContent = content.platform;
@@ -192,19 +220,68 @@ async function initContentDetail() {
 
   renderLinks(content.links);
   renderMessages(content.messages);
+  updateOpenInAppUI();
+
+  function hasOpenInAppLink() {
+    return content.links.some((link) => link.type === 'openinapp');
+  }
+
+  function updateOpenInAppUI() {
+    const exists = hasOpenInAppLink();
+    qs('generate-openinapp-link').style.display = exists ? 'none' : '';
+    qs('link-type').querySelector('option[value="openinapp"]').disabled = exists;
+    if (exists && qs('link-type').value === 'openinapp') {
+      qs('link-type').value = 'creatorurls';
+    }
+  }
 
   qs('add-link-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const type = qs('link-type').value;
     const url = qs('link-url').value;
     const label = qs('link-label').value;
+    if (type === 'openinapp' && hasOpenInAppLink()) {
+      qs('generate-openinapp-status').textContent = 'An OpenInApp link already exists for this content.';
+      return;
+    }
     const link = await api(`/api/content/${id}/links`, {
       method: 'POST',
       body: JSON.stringify({ type, url, label }),
     });
     content.links.push(link);
     renderLinks(content.links);
+    updateOpenInAppUI();
     e.target.reset();
+  });
+
+  qs('generate-openinapp-link').addEventListener('click', async () => {
+    const button = qs('generate-openinapp-link');
+    const status = qs('generate-openinapp-status');
+    if (hasOpenInAppLink()) {
+      status.textContent = 'An OpenInApp link already exists for this content.';
+      return;
+    }
+    if (!content.source_url) {
+      status.textContent = 'No source URL to generate a link from.';
+      return;
+    }
+    button.disabled = true;
+    button.textContent = 'Generating...';
+    status.textContent = '';
+    try {
+      const { url } = await api('/api/openinapp', {
+        method: 'POST',
+        body: JSON.stringify({ url: content.source_url }),
+      });
+      qs('link-type').value = 'openinapp';
+      qs('link-url').value = url;
+      qs('add-link-form').requestSubmit();
+    } catch (err) {
+      status.textContent = `Generation failed: ${err.message}`;
+    } finally {
+      button.disabled = false;
+      button.textContent = 'Generate OpenInApp Link';
+    }
   });
 
   qs('add-message-form').addEventListener('submit', async (e) => {
@@ -231,8 +308,77 @@ async function initContentDetail() {
     for (const link of links) {
       const row = document.createElement('div');
       row.className = 'row';
+
+      if (editingLinkId === link.id) {
+        row.style.flexDirection = 'column';
+        row.style.alignItems = 'stretch';
+
+        const editFields = document.createElement('div');
+        editFields.style.display = 'flex';
+        editFields.style.gap = '6px';
+
+        const typeSelect = document.createElement('select');
+        for (const type of ['openinapp', 'creatorurls', 'affiliate', 'other']) {
+          const opt = document.createElement('option');
+          opt.value = type;
+          opt.textContent = type;
+          opt.selected = type === link.type;
+          typeSelect.appendChild(opt);
+        }
+        editFields.appendChild(typeSelect);
+
+        const descInput = document.createElement('input');
+        descInput.type = 'text';
+        descInput.placeholder = 'Description (optional)';
+        descInput.value = link.label || '';
+        editFields.appendChild(descInput);
+
+        const urlInput = document.createElement('input');
+        urlInput.type = 'url';
+        urlInput.required = true;
+        urlInput.style.flex = '1';
+        urlInput.value = link.url;
+        editFields.appendChild(urlInput);
+
+        row.appendChild(editFields);
+
+        const editActions = document.createElement('div');
+        editActions.style.display = 'flex';
+        editActions.style.gap = '6px';
+        editActions.style.marginTop = '6px';
+
+        const saveBtn = document.createElement('button');
+        saveBtn.className = 'small';
+        saveBtn.textContent = 'Save';
+        saveBtn.addEventListener('click', async () => {
+          const updated = await api(`/api/links/${link.id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ type: typeSelect.value, label: descInput.value, url: urlInput.value }),
+          });
+          const idx = content.links.findIndex((l) => l.id === link.id);
+          content.links[idx] = updated;
+          editingLinkId = null;
+          renderLinks(content.links);
+          updateOpenInAppUI();
+        });
+        editActions.appendChild(saveBtn);
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'small secondary';
+        cancelBtn.textContent = 'Cancel';
+        cancelBtn.addEventListener('click', () => {
+          editingLinkId = null;
+          renderLinks(content.links);
+        });
+        editActions.appendChild(cancelBtn);
+
+        row.appendChild(editActions);
+        list.appendChild(row);
+        continue;
+      }
+
       const left = document.createElement('div');
-      left.innerHTML = `<div class="label">${link.type}${link.label ? ` · ${link.label}` : ''}</div><div class="value">${link.url}</div>`;
+      left.innerHTML = `<div class="label">${link.type}</div><div class="value">${link.url}</div>${link.label ? `<div class="description">${link.label}</div>` : ''}`;
       row.appendChild(left);
 
       const actions = document.createElement('div');
@@ -242,13 +388,25 @@ async function initContentDetail() {
       copyBtn.addEventListener('click', () => copyToClipboard(link.url, copyBtn));
       actions.appendChild(copyBtn);
 
+      const editBtn = document.createElement('button');
+      editBtn.className = 'small secondary';
+      editBtn.textContent = 'Edit';
+      editBtn.addEventListener('click', () => {
+        editingLinkId = link.id;
+        renderLinks(content.links);
+      });
+      actions.appendChild(editBtn);
+
       const delBtn = document.createElement('button');
       delBtn.className = 'small secondary';
       delBtn.textContent = 'Delete';
       delBtn.addEventListener('click', async () => {
+        const confirmed = await confirmModal(`Delete this ${link.type} link? This can't be undone.`);
+        if (!confirmed) return;
         await api(`/api/links/${link.id}`, { method: 'DELETE' });
         content.links = content.links.filter((l) => l.id !== link.id);
         renderLinks(content.links);
+        updateOpenInAppUI();
       });
       actions.appendChild(delBtn);
 

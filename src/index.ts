@@ -1,11 +1,13 @@
 import { Hono } from 'hono';
 import { syncYouTubeUploads } from './youtube';
+import { createDeepLink } from './openinapp';
 
 type Bindings = {
   DB: D1Database;
   ASSETS: Fetcher;
   YOUTUBE_API_KEY: string;
   YOUTUBE_UPLOADS_PLAYLIST_ID: string;
+  OPENINAPP_API_KEY: string;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -103,6 +105,25 @@ app.post('/api/content/:id/links', async (c) => {
   return c.json(row, 201);
 });
 
+app.put('/api/links/:id', async (c) => {
+  const id = c.req.param('id');
+  const { type, label, url } = await c.req.json();
+  const { meta } = await c.env.DB.prepare(
+    `UPDATE links
+     SET type = COALESCE(?, type),
+         label = COALESCE(?, label),
+         url = COALESCE(?, url)
+     WHERE id = ?`
+  )
+    .bind(type ?? null, label ?? null, url ?? null, id)
+    .run();
+  if (meta.changes === 0) {
+    return c.json({ error: 'not found' }, 404);
+  }
+  const row = await c.env.DB.prepare('SELECT * FROM links WHERE id = ?').bind(id).first();
+  return c.json(row);
+});
+
 app.delete('/api/links/:id', async (c) => {
   const id = c.req.param('id');
   const { meta } = await c.env.DB.prepare('DELETE FROM links WHERE id = ?').bind(id).run();
@@ -148,6 +169,19 @@ app.post('/api/sync/youtube', async (c) => {
     return c.json(result);
   } catch (err) {
     return c.json({ error: err instanceof Error ? err.message : 'sync failed' }, 502);
+  }
+});
+
+app.post('/api/openinapp', async (c) => {
+  const { url } = await c.req.json();
+  if (!url) {
+    return c.json({ error: 'url is required' }, 400);
+  }
+  try {
+    const deepLink = await createDeepLink(c.env.OPENINAPP_API_KEY, url);
+    return c.json({ url: deepLink });
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : 'OpenInApp request failed' }, 502);
   }
 });
 

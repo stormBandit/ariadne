@@ -11,7 +11,7 @@ Built on Cloudflare Workers + D1 + Pages. Cost: $0 on the free tier.
 |---|---|
 | Backend | Cloudflare Workers (TypeScript + Hono) |
 | Database | Cloudflare D1 (SQLite) |
-| Frontend | Vanilla HTML/CSS/JS (planned) |
+| Frontend | Vanilla HTML/CSS/JS |
 | Tests | Vitest + `@cloudflare/vitest-pool-workers` |
 
 ## Data model
@@ -44,12 +44,12 @@ content                  links                     messages
 | `DELETE` | `/api/links/:id` | Remove a single link |
 | `POST` | `/api/content/:id/messages` | Save a DM automation message for a content piece (per platform/trigger word) |
 | `DELETE` | `/api/messages/:id` | Remove a single message |
+| `POST` | `/api/openinapp` | Proxies a source URL to the OpenInApp API and returns a deep link |
 
 Planned, not yet implemented:
 
 | Method | Path | What it's for |
 |---|---|---|
-| `POST` | `/api/openinapp` | Proxies a source URL to the OpenInApp API and returns a deep link |
 | `POST` | `/api/generate-message` | Calls Gemini with content + link details, returns 3 DM message options to choose from |
 
 ### Request flow

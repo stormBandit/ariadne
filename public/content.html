@@ -22,14 +22,18 @@
     <div class="section">
       <h2>Links</h2>
       <div id="link-list"></div>
-      <form id="add-link-form" style="display: flex; gap: 6px; margin-top: 8px;">
+      <div style="margin-top: 16px;">
+        <button type="button" id="generate-openinapp-link" class="small secondary">Generate OpenInApp Link</button>
+        <span id="generate-openinapp-status"></span>
+      </div>
+      <form id="add-link-form" style="display: flex; gap: 6px; margin-top: 16px;">
         <select id="link-type" required>
           <option value="openinapp">OpenInApp</option>
           <option value="creatorurls">CreatorURLs</option>
           <option value="affiliate">Affiliate</option>
           <option value="other">Other</option>
         </select>
-        <input id="link-label" type="text" placeholder="Label (optional)" />
+        <input id="link-label" type="text" placeholder="Description (optional)" />
         <input id="link-url" type="url" placeholder="https://..." required style="flex: 1;" />
         <button type="submit" class="small">Add</button>
       </form>
@@ -46,6 +50,16 @@
         <textarea id="message-body" placeholder="Message body" required rows="3"></textarea>
         <button type="submit" class="small" style="align-self: flex-start;">Add</button>
       </form>
+    </div>
+  </div>
+
+  <div id="confirm-modal" class="modal-overlay" style="display: none;">
+    <div class="modal">
+      <p id="confirm-modal-message">Are you sure?</p>
+      <div class="modal-actions">
+        <button type="button" id="confirm-modal-cancel" class="small secondary">Cancel</button>
+        <button type="button" id="confirm-modal-confirm" class="small danger">Delete</button>
+      </div>
     </div>
   </div>
 

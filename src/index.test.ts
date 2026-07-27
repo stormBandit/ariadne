@@ -10,6 +10,7 @@ CREATE TABLE content (
   source_url  TEXT,
   publish_date TEXT,
   status      TEXT DEFAULT 'draft',
+  video_type  TEXT NOT NULL DEFAULT 'video',
   created_at  TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -163,6 +164,44 @@ describe('links endpoints', () => {
       env
     );
     expect(res.status).toBe(400);
+  });
+
+  it('updates a link', async () => {
+    const content = await createContent();
+    const created = await app.request(
+      `/api/content/${content.id}/links`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'other', url: 'https://example.com' }),
+      },
+      env
+    );
+    const link = (await created.json()) as { id: number };
+
+    const res = await app.request(
+      `/api/links/${link.id}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: 'updated description', url: 'https://example.com/updated' }),
+      },
+      env
+    );
+    expect(res.status).toBe(200);
+    const updated = (await res.json()) as { label: string; url: string; type: string };
+    expect(updated.label).toBe('updated description');
+    expect(updated.url).toBe('https://example.com/updated');
+    expect(updated.type).toBe('other');
+  });
+
+  it('returns 404 updating a missing link', async () => {
+    const res = await app.request(
+      '/api/links/999999',
+      { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: 'https://x.com' }) },
+      env
+    );
+    expect(res.status).toBe(404);
   });
 
   it('deletes a link', async () => {
