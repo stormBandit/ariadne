@@ -29,6 +29,30 @@ function copyToClipboard(text, button) {
   });
 }
 
+// Returns an error message string if the URL doesn't belong on the given
+// link type, or null if it's valid. Only openinapp/creatorurls have a known,
+// fixed link format; affiliate/other links vary by platform so we only
+// require them to be a well-formed URL.
+function validateLinkUrl(type, urlStr) {
+  let parsed;
+  try {
+    parsed = new URL(urlStr);
+  } catch {
+    return 'Enter a valid URL.';
+  }
+  const host = parsed.hostname.toLowerCase();
+  if (type === 'openinapp') {
+    if (host !== 'openinapp.co' && !host.endsWith('.openinapp.co')) {
+      return 'OpenInApp links must be on openinapp.co.';
+    }
+  } else if (type === 'creatorurls') {
+    if ((host !== 'creatorurls.com' && !host.endsWith('.creatorurls.com')) || !parsed.pathname.startsWith('/tns/s/')) {
+      return 'CreatorURLs links must look like https://creatorurls.com/tns/s/...';
+    }
+  }
+  return null;
+}
+
 function confirmModal(message) {
   return new Promise((resolve) => {
     const overlay = qs('confirm-modal');
@@ -351,6 +375,12 @@ async function initContentDetail() {
       qs('generate-openinapp-status').textContent = 'An OpenInApp link already exists for this content.';
       return;
     }
+    const validationError = validateLinkUrl(type, url);
+    if (validationError) {
+      qs('link-form-status').textContent = validationError;
+      return;
+    }
+    qs('link-form-status').textContent = '';
     const link = await api(`/api/content/${id}/links`, {
       method: 'POST',
       body: JSON.stringify({ type, url, label }),
@@ -750,6 +780,11 @@ async function initContentDetail() {
 
         row.appendChild(editFields);
 
+        const editError = document.createElement('div');
+        editError.className = 'error-text';
+        editError.style.marginTop = '4px';
+        row.appendChild(editError);
+
         const editActions = document.createElement('div');
         editActions.style.display = 'flex';
         editActions.style.gap = '6px';
@@ -759,6 +794,11 @@ async function initContentDetail() {
         saveBtn.className = 'small';
         saveBtn.textContent = 'Save';
         saveBtn.addEventListener('click', async () => {
+          const validationError = validateLinkUrl(typeSelect.value, urlInput.value);
+          if (validationError) {
+            editError.textContent = validationError;
+            return;
+          }
           const updated = await api(`/api/links/${link.id}`, {
             method: 'PUT',
             body: JSON.stringify({ type: typeSelect.value, label: descInput.value, url: urlInput.value }),

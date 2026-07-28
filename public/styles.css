@@ -225,6 +225,16 @@ button.danger {
   background: #dc2626;
 }
 
+.error-text {
+  font-size: 13px;
+  color: #dc2626;
+  margin-top: 4px;
+}
+
+.error-text:empty {
+  display: none;
+}
+
 .modal-overlay {
   position: fixed;
   inset: 0;
