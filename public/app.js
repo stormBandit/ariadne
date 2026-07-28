@@ -563,8 +563,8 @@ async function initContentDetail() {
         notesInput.value = test.notes || '';
         card.appendChild(notesInput);
 
-        const editStatusMsg = document.createElement('div');
-        editStatusMsg.className = 'notes';
+        const editStatusErrorMsg = document.createElement('div');
+        editStatusErrorMsg.className = 'error-text';
 
         const editActions = document.createElement('div');
         editActions.className = 'test-card-actions';
@@ -575,8 +575,16 @@ async function initContentDetail() {
         saveBtn.addEventListener('click', async () => {
           const variants = await readVariantRows(variantsContainer);
           if (variants.length < 2) {
-            editStatusMsg.textContent = 'Add at least 2 variants.';
+            editStatusErrorMsg.textContent = 'Add at least 2 variants.';
             return;
+          }
+          const editShares = variants.map((v) => v.watch_time_share);
+          if (editShares.some((s) => s !== null)) {
+            const editTotal = editShares.reduce((sum, s) => sum + (s ?? 0), 0);
+            if (Math.abs(editTotal - 100) > 0.1) {
+              editStatusErrorMsg.textContent = 'Watch Time Share must sum to 100%';
+              return;
+            }
           }
           try {
             const updated = await api(`/api/tests/${test.id}`, {
@@ -594,7 +602,7 @@ async function initContentDetail() {
             editingTestId = null;
             renderTests(prefix, testType);
           } catch (err) {
-            editStatusMsg.textContent = err.message;
+            editStatusErrorMsg.textContent = err.message;
           }
         });
         editActions.appendChild(saveBtn);
@@ -608,7 +616,7 @@ async function initContentDetail() {
         });
         editActions.appendChild(cancelBtn);
 
-        card.appendChild(editStatusMsg);
+        card.appendChild(editStatusErrorMsg);
         card.appendChild(editActions);
 
         list.appendChild(card);
@@ -712,6 +720,14 @@ async function initContentDetail() {
       if (variants.length < 2) {
         statusMsg.textContent = 'Add at least 2 variants.';
         return;
+      }
+      const shares = variants.map((v) => v.watch_time_share);
+      if (shares.some((s) => s !== null)) {
+        const total = shares.reduce((sum, s) => sum + (s ?? 0), 0);
+        if (Math.abs(total - 100) > 0.1) {
+          statusMsg.textContent = 'Watch Time Share must sum to 100%';
+          return;
+        }
       }
       try {
         const test = await api(`/api/content/${id}/tests`, {
