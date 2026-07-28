@@ -341,6 +341,7 @@ button.danger {
   font-size: 13px;
   color: var(--text-dim);
   margin-top: 8px;
+  margin-bottom: 20px;
 }
 
 .test-card-actions {

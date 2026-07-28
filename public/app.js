@@ -627,6 +627,15 @@ async function initContentDetail() {
       top.appendChild(badge);
       card.appendChild(top);
 
+      // Build Test Notes
+      if (test.notes) {
+        const notes = document.createElement('div');
+        notes.className = 'notes';
+        notes.textContent = test.notes;
+        card.appendChild(notes);
+      }
+
+      // Build the test variants title list 
       for (const variant of test.variants) {
         const row = document.createElement('div');
         row.className = 'test-variant';
@@ -648,13 +657,6 @@ async function initContentDetail() {
             : '—';
         row.appendChild(share);
         card.appendChild(row);
-      }
-
-      if (test.notes) {
-        const notes = document.createElement('div');
-        notes.className = 'notes';
-        notes.textContent = test.notes;
-        card.appendChild(notes);
       }
 
       const actions = document.createElement('div');
