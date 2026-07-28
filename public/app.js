@@ -177,7 +177,7 @@ async function initDashboard() {
   function render() {
     const term = search.value.trim().toLowerCase();
     const filtered = items.filter((item) => {
-      const matchesTerm = !term || item.title.toLowerCase().includes(term);
+      const matchesTerm = !term || item.title.toLowerCase().includes(term) || item.video_id.toLowerCase().includes(term);
       const matchesType = typeFilter === 'videos' ? item.video_type !== 'short' : item.video_type === 'short';
       return matchesTerm && matchesType;
     });
