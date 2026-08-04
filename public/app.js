@@ -441,9 +441,14 @@ async function initContentDetail() {
     e.preventDefault();
     const keyword = qs('keyword-text').value;
     const scoreValue = qs('keyword-score').value;
+    const volumeValue = qs('keyword-volume').value;
     const created = await api(`/api/content/${id}/keywords`, {
       method: 'POST',
-      body: JSON.stringify({ keyword, weighted_score: scoreValue ? Number(scoreValue) : null }),
+      body: JSON.stringify({
+        keyword,
+        weighted_score: scoreValue ? Number(scoreValue) : null,
+        search_volume: volumeValue || null,
+      }),
     });
     content.keywords.push(created);
     renderKeywords(content.keywords);
@@ -472,6 +477,13 @@ async function initContentDetail() {
         score.className = 'score';
         score.textContent = kw.weighted_score;
         tag.appendChild(score);
+      }
+
+      if (kw.search_volume) {
+        const volume = document.createElement('span');
+        volume.className = `volume volume-${kw.search_volume.toLowerCase()}`;
+        volume.textContent = kw.search_volume;
+        tag.appendChild(volume);
       }
 
       const delBtn = document.createElement('button');

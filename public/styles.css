@@ -290,6 +290,18 @@ button.danger {
   font-size: 12px;
 }
 
+.tag .volume {
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
+.tag .volume-poor { background: rgba(220,38,38,.15); color: #dc2626; }
+.tag .volume-fair { background: rgba(234,88,12,.15); color: #ea580c; }
+.tag .volume-good { background: rgba(217,119,6,.15); color: var(--scheduled); }
+.tag .volume-great { background: rgba(101,163,13,.15); color: #65a30d; }
+.tag .volume-excellent { background: rgba(22,163,74,.15); color: var(--live); }
+
 .tag button {
   background: transparent;
   color: var(--text-dim);

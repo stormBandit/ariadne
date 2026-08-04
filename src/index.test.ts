@@ -36,6 +36,7 @@ CREATE TABLE keywords (
   content_id     TEXT REFERENCES youtube_videos(video_id) ON DELETE CASCADE,
   keyword        TEXT NOT NULL,
   weighted_score INTEGER,
+  search_volume  TEXT CHECK (search_volume IS NULL OR search_volume IN ('Poor', 'Fair', 'Good', 'Great', 'Excellent')),
   created_at     TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -298,25 +299,45 @@ describe('keywords endpoints', () => {
     expect(res.status).toBe(400);
   });
 
-  it('creates a keyword with a weighted score and includes it on the content detail', async () => {
+  it('creates a keyword with a weighted score and search volume, and includes it on the content detail', async () => {
     const content = await createContent();
     const created = await app.request(
       `/api/content/${content.video_id}/keywords`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keyword: 'prince rupert', weighted_score: 92 }),
+        body: JSON.stringify({ keyword: 'prince rupert', weighted_score: 92, search_volume: 'Great' }),
       },
       env
     );
     expect(created.status).toBe(201);
-    const keyword = (await created.json()) as { id: number; keyword: string; weighted_score: number };
+    const keyword = (await created.json()) as {
+      id: number;
+      keyword: string;
+      weighted_score: number;
+      search_volume: string;
+    };
     expect(keyword.keyword).toBe('prince rupert');
     expect(keyword.weighted_score).toBe(92);
+    expect(keyword.search_volume).toBe('Great');
 
     const res = await app.request(`/api/content/${content.video_id}`, {}, env);
     const body = (await res.json()) as any;
     expect(body.keywords).toHaveLength(1);
+  });
+
+  it('rejects a keyword with an invalid search volume', async () => {
+    const content = await createContent();
+    const res = await app.request(
+      `/api/content/${content.video_id}/keywords`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keyword: 'prince rupert', search_volume: 'Amazing' }),
+      },
+      env
+    );
+    expect(res.status).toBe(400);
   });
 
   it('deletes a keyword', async () => {

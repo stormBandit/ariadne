@@ -40,11 +40,19 @@
     </div>
 
     <div class="section">
-      <h2>Keywords</h2>
+      <h2>Keywords Targetted</h2>
       <div id="keyword-list"></div>
       <form id="add-keyword-form" style="display: flex; gap: 6px; margin-top: 8px;">
         <input id="keyword-text" type="text" placeholder="Keyword" required style="flex: 1;" />
         <input id="keyword-score" type="number" min="0" max="100" placeholder="Score (0-100)" style="width: 140px;" />
+        <select id="keyword-volume">
+          <option value="">Search volume</option>
+          <option value="Poor">Poor</option>
+          <option value="Fair">Fair</option>
+          <option value="Good">Good</option>
+          <option value="Great">Great</option>
+          <option value="Excellent">Excellent</option>
+        </select>
         <button type="submit" class="small">Add</button>
       </form>
     </div>

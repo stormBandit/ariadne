@@ -180,16 +180,21 @@ app.delete('/api/messages/:id', async (c) => {
   return c.body(null, 204);
 });
 
+const SEARCH_VOLUMES = ['Poor', 'Fair', 'Good', 'Great', 'Excellent'];
+
 app.post('/api/content/:id/keywords', async (c) => {
   const contentId = c.req.param('id');
-  const { keyword, weighted_score } = await c.req.json();
+  const { keyword, weighted_score, search_volume } = await c.req.json();
   if (!keyword) {
     return c.json({ error: 'keyword is required' }, 400);
   }
+  if (search_volume && !SEARCH_VOLUMES.includes(search_volume)) {
+    return c.json({ error: `search_volume must be one of: ${SEARCH_VOLUMES.join(', ')}` }, 400);
+  }
   const { meta } = await c.env.DB.prepare(
-    'INSERT INTO keywords (content_id, keyword, weighted_score) VALUES (?, ?, ?)'
+    'INSERT INTO keywords (content_id, keyword, weighted_score, search_volume) VALUES (?, ?, ?, ?)'
   )
-    .bind(contentId, keyword, weighted_score ?? null)
+    .bind(contentId, keyword, weighted_score ?? null, search_volume ?? null)
     .run();
   const row = await c.env.DB.prepare('SELECT * FROM keywords WHERE id = ?')
     .bind(meta.last_row_id)

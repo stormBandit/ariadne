@@ -31,6 +31,7 @@ CREATE TABLE keywords (
   content_id     TEXT REFERENCES youtube_videos(video_id) ON DELETE CASCADE,
   keyword        TEXT NOT NULL,
   weighted_score INTEGER, -- TubeBuddy "weighted overall score", out of 100
+  search_volume  TEXT CHECK (search_volume IS NULL OR search_volume IN ('Poor', 'Fair', 'Good', 'Great', 'Excellent')),
   created_at     TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
