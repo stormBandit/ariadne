@@ -19,6 +19,24 @@
     </div>
 
     <div class="section">
+      <h2>Keywords Targetted</h2>
+      <div id="keyword-list"></div>
+      <form id="add-keyword-form" style="display: flex; gap: 6px; margin-top: 8px;">
+        <input id="keyword-text" type="text" placeholder="Keyword" required style="flex: 1;" />
+        <input id="keyword-score" type="number" min="0" max="100" placeholder="Score (0-100)" style="width: 140px;" />
+        <select id="keyword-volume">
+          <option value="">Search volume</option>
+          <option value="Poor">Poor</option>
+          <option value="Fair">Fair</option>
+          <option value="Good">Good</option>
+          <option value="Great">Great</option>
+          <option value="Excellent">Excellent</option>
+        </select>
+        <button type="submit" class="small">Add</button>
+      </form>
+    </div>
+
+    <div class="section">
       <h2>Links</h2>
       <div id="link-list"></div>
       <div style="margin-top: 16px;">
@@ -40,20 +58,15 @@
     </div>
 
     <div class="section">
-      <h2>Keywords Targetted</h2>
-      <div id="keyword-list"></div>
-      <form id="add-keyword-form" style="display: flex; gap: 6px; margin-top: 8px;">
-        <input id="keyword-text" type="text" placeholder="Keyword" required style="flex: 1;" />
-        <input id="keyword-score" type="number" min="0" max="100" placeholder="Score (0-100)" style="width: 140px;" />
-        <select id="keyword-volume">
-          <option value="">Search volume</option>
-          <option value="Poor">Poor</option>
-          <option value="Fair">Fair</option>
-          <option value="Good">Good</option>
-          <option value="Great">Great</option>
-          <option value="Excellent">Excellent</option>
-        </select>
-        <button type="submit" class="small">Add</button>
+      <h2>Messages</h2>
+      <div id="message-list"></div>
+      <form id="add-message-form" style="display: flex; flex-direction: column; gap: 6px; margin-top: 8px;">
+        <div style="display: flex; gap: 6px;">
+          <input id="message-platform" type="text" placeholder="Platform (youtube...)" />
+          <input id="message-trigger" type="text" placeholder="Trigger word" />
+        </div>
+        <textarea id="message-body" placeholder="Message body" required rows="3"></textarea>
+        <button type="submit" class="small" style="align-self: flex-start;">Add</button>
       </form>
     </div>
 
@@ -101,18 +114,6 @@
       </form>
     </div>
 
-    <div class="section">
-      <h2>Messages</h2>
-      <div id="message-list"></div>
-      <form id="add-message-form" style="display: flex; flex-direction: column; gap: 6px; margin-top: 8px;">
-        <div style="display: flex; gap: 6px;">
-          <input id="message-platform" type="text" placeholder="Platform (youtube...)" />
-          <input id="message-trigger" type="text" placeholder="Trigger word" />
-        </div>
-        <textarea id="message-body" placeholder="Message body" required rows="3"></textarea>
-        <button type="submit" class="small" style="align-self: flex-start;">Add</button>
-      </form>
-    </div>
   </div>
 
   <div id="confirm-modal" class="modal-overlay" style="display: none;">
