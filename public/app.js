@@ -109,6 +109,32 @@ function fileToDataUrl(file) {
   });
 }
 
+// Thumbnails are stored as base64 directly in a D1 TEXT column, which has a
+// hard per-value size limit (SQLITE_TOOBIG if exceeded). A raw phone/camera
+// image easily blows past that, so downscale to a reasonable thumbnail size
+// and re-encode as JPEG before it's ever base64-encoded.
+function compressImageToDataUrl(file, maxWidth = 640, maxHeight = 360, quality = 0.8) {
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const scale = Math.min(1, maxWidth / img.width, maxHeight / img.height);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('Could not read image file'));
+    };
+    img.src = objectUrl;
+  });
+}
+
 function addVariantRow(container, placeholder, inputType = 'text', initial = null) {
   const row = document.createElement('div');
   row.className = 'variant-row';
@@ -137,7 +163,7 @@ function addVariantRow(container, placeholder, inputType = 'text', initial = nul
         if (row.dataset.originalValue) preview.src = row.dataset.originalValue;
         return;
       }
-      fileToDataUrl(file).then((dataUrl) => {
+      compressImageToDataUrl(file).then((dataUrl) => {
         preview.src = dataUrl;
         preview.style.display = '';
       });
@@ -176,7 +202,7 @@ async function readVariantRows(container) {
       const value =
         valueInput.type === 'file'
           ? valueInput.files[0]
-            ? await fileToDataUrl(valueInput.files[0])
+            ? await compressImageToDataUrl(valueInput.files[0])
             : row.dataset.originalValue || ''
           : valueInput.value.trim();
       return {
