@@ -89,7 +89,14 @@ function statusBadge(status) {
 
 function formatDate(value) {
   if (!value) return '';
-  const date = new Date(value);
+  // Plain "YYYY-MM-DD" values (from <input type="date">) have no time
+  // component, so `new Date(value)` parses them as UTC midnight — converting
+  // that to local time for display can roll it back a day in timezones
+  // behind UTC. Parse the components directly as a local date instead.
+  const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  const date = dateOnlyMatch
+    ? new Date(Number(dateOnlyMatch[1]), Number(dateOnlyMatch[2]) - 1, Number(dateOnlyMatch[3]))
+    : new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
