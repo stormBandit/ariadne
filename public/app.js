@@ -87,6 +87,48 @@ function statusBadge(status) {
   return span;
 }
 
+// Small inline icons so test-status badges are distinguishable by shape, not
+// just color — useful once a thumbnail-test badge sits next to this one.
+const TITLE_TEST_ICON =
+  '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+  '<path d="M4 6h16M4 12h10M4 18h13" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>';
+
+function iconBadge(className, label, iconMarkup, tooltip) {
+  const span = document.createElement('span');
+  span.className = `badge badge-icon ${className}`;
+  if (tooltip) span.title = tooltip;
+  const icon = document.createElement('span');
+  icon.className = 'badge-icon-glyph';
+  icon.innerHTML = iconMarkup;
+  icon.setAttribute('aria-hidden', 'true');
+  span.appendChild(icon);
+  const text = document.createElement('span');
+  text.textContent = label;
+  span.appendChild(text);
+  return span;
+}
+
+// Derives a title-test badge from the most recently created title test for
+// a video (if any). A test with no end_date yet is treated as still running.
+function titleTestBadge(item) {
+  let className;
+  let label;
+  if (!item.title_test_status) {
+    className = 'title-test-none';
+    label = 'None';
+  } else if (!item.title_test_end_date) {
+    className = 'title-test-progress';
+    label = 'In Progress';
+  } else if (item.title_test_status === 'conclusive') {
+    className = 'title-test-conclusive';
+    label = 'Conclusive';
+  } else {
+    className = 'title-test-inconclusive';
+    label = 'Inconclusive';
+  }
+  return iconBadge(className, label, TITLE_TEST_ICON, 'Title Test Status');
+}
+
 function formatDate(value) {
   if (!value) return '';
   // Plain "YYYY-MM-DD" values (from <input type="date">) have no time
@@ -263,7 +305,14 @@ async function initDashboard() {
       const title = document.createElement('h3');
       title.textContent = item.title;
       top.appendChild(title);
-      top.appendChild(statusBadge(item.status));
+
+      const badges = document.createElement('div');
+      badges.style.display = 'flex';
+      badges.style.gap = '4px';
+      badges.appendChild(statusBadge(item.status));
+      badges.appendChild(titleTestBadge(item));
+      top.appendChild(badges);
+
       card.appendChild(top);
 
       // Published Date

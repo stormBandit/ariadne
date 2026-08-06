@@ -153,6 +153,25 @@ input, select, textarea {
 .badge.scheduled { background: rgba(217,119,6,.2); color: var(--scheduled); }
 .badge.live { background: rgba(22,163,74,.2); color: var(--live); }
 
+.badge.title-test-none { background: rgba(107,114,128,.2); color: var(--draft); }
+.badge.title-test-progress { background: rgba(91,140,255,.15); color: var(--accent); }
+.badge.title-test-inconclusive { background: rgba(217,119,6,.2); color: var(--scheduled); }
+.badge.title-test-conclusive { background: rgba(22,163,74,.2); color: var(--live); }
+
+.badge.badge-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.badge-icon-glyph {
+  display: inline-flex;
+}
+
+.badge-icon-glyph svg {
+  display: block;
+}
+
 .empty-state {
   text-align: center;
   color: var(--text-dim);

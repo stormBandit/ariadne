@@ -13,8 +13,18 @@ type Bindings = {
 const app = new Hono<{ Bindings: Bindings }>();
 
 app.get('/api/content', async (c) => {
+  // title_test_status/title_test_end_date reflect the most recently created
+  // title test for the video (if any) — the dashboard derives the "In
+  // Progress / None / Inconclusive / Conclusive" badge from these two
+  // columns rather than joining full test rows.
   const { results } = await c.env.DB.prepare(
-    'SELECT * FROM youtube_videos ORDER BY created_at DESC'
+    `SELECT v.*,
+       (SELECT t.status FROM tests t WHERE t.content_id = v.video_id AND t.test_type = 'title'
+        ORDER BY t.created_at DESC, t.id DESC LIMIT 1) AS title_test_status,
+       (SELECT t.end_date FROM tests t WHERE t.content_id = v.video_id AND t.test_type = 'title'
+        ORDER BY t.created_at DESC, t.id DESC LIMIT 1) AS title_test_end_date
+     FROM youtube_videos v
+     ORDER BY v.created_at DESC`
   ).all();
   return c.json(results);
 });

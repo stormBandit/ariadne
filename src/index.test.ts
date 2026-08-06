@@ -106,6 +106,54 @@ describe('content endpoints', () => {
     expect(rows[0].status).toBe('draft');
   });
 
+  it('reports title_test_status/title_test_end_date from the most recent title test', async () => {
+    const noTest = await createContent({ video_id: 'no-test' });
+    const inProgress = await createContent({ video_id: 'in-progress', title: 'In Progress Video' });
+    const concluded = await createContent({ video_id: 'concluded', title: 'Concluded Video' });
+
+    await app.request(
+      `/api/content/${inProgress.video_id}/tests`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          test_type: 'title',
+          start_date: '2026-07-15',
+          variants: [{ value: 'A' }, { value: 'B' }],
+        }),
+      },
+      env
+    );
+    await app.request(
+      `/api/content/${concluded.video_id}/tests`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          test_type: 'title',
+          status: 'conclusive',
+          start_date: '2026-07-01',
+          end_date: '2026-07-10',
+          variants: [{ value: 'A', watch_time_share: 60 }, { value: 'B', watch_time_share: 40 }],
+        }),
+      },
+      env
+    );
+
+    const res = await app.request('/api/content', {}, env);
+    const rows = (await res.json()) as any[];
+    const byId = Object.fromEntries(rows.map((r) => [r.video_id, r]));
+
+    expect(byId[noTest.video_id].title_test_status).toBeNull();
+    expect(byId[noTest.video_id].title_test_end_date).toBeNull();
+
+    expect(byId[inProgress.video_id].title_test_status).toBe('inconclusive');
+    expect(byId[inProgress.video_id].title_test_end_date).toBeNull();
+
+    expect(byId[concluded.video_id].title_test_status).toBe('conclusive');
+    expect(byId[concluded.video_id].title_test_end_date).toBe('2026-07-10');
+  });
+
   it('fetches one content piece with its links and messages', async () => {
     const content = await createContent();
     await app.request(
