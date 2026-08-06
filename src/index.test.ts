@@ -106,6 +106,16 @@ describe('content endpoints', () => {
     expect(rows[0].status).toBe('draft');
   });
 
+  it('lists content newest-to-oldest by publish_date, with no-date videos last', async () => {
+    await createContent({ video_id: 'older', title: 'Older', publish_date: '2026-01-01T00:00:00Z' });
+    await createContent({ video_id: 'newer', title: 'Newer', publish_date: '2026-06-01T00:00:00Z' });
+    await createContent({ video_id: 'no-date', title: 'No Date', publish_date: null });
+
+    const res = await app.request('/api/content', {}, env);
+    const rows = (await res.json()) as any[];
+    expect(rows.map((r) => r.video_id)).toEqual(['newer', 'older', 'no-date']);
+  });
+
   it('reports title_test_status/title_test_end_date from the most recent title test', async () => {
     const noTest = await createContent({ video_id: 'no-test' });
     const inProgress = await createContent({ video_id: 'in-progress', title: 'In Progress Video' });

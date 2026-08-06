@@ -24,7 +24,7 @@ app.get('/api/content', async (c) => {
        (SELECT t.end_date FROM tests t WHERE t.content_id = v.video_id AND t.test_type = 'title'
         ORDER BY t.created_at DESC, t.id DESC LIMIT 1) AS title_test_end_date
      FROM youtube_videos v
-     ORDER BY v.created_at DESC`
+     ORDER BY v.publish_date DESC NULLS LAST, v.created_at DESC`
   ).all();
   return c.json(results);
 });
