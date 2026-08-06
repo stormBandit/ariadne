@@ -77,25 +77,26 @@ beforeEach(async () => {
 });
 
 async function createContent(overrides: Partial<Record<string, unknown>> = {}) {
-  const res = await app.request(
-    '/api/content',
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: 'Test Video',
-        video_id: 'abc123',
-        source_url: 'https://www.youtube.com/watch?v=abc123',
-        ...overrides,
-      }),
-    },
-    env
-  );
-  return res.json() as Promise<{ video_id: string }>;
+  const data = {
+    video_id: 'abc123',
+    title: 'Test Video',
+    source_url: 'https://www.youtube.com/watch?v=abc123',
+    publish_date: null,
+    status: 'draft',
+    video_type: 'video',
+    ...overrides,
+  } as Record<string, unknown>;
+  await env.DB.prepare(
+    `INSERT INTO youtube_videos (video_id, title, source_url, publish_date, status, video_type)
+     VALUES (?, ?, ?, ?, ?, ?)`
+  )
+    .bind(data.video_id, data.title, data.source_url, data.publish_date, data.status, data.video_type)
+    .run();
+  return { video_id: data.video_id as string };
 }
 
 describe('content endpoints', () => {
-  it('creates content and lists it', async () => {
+  it('lists content', async () => {
     await createContent({ title: 'First' });
     const res = await app.request('/api/content', {}, env);
     expect(res.status).toBe(200);
@@ -103,15 +104,6 @@ describe('content endpoints', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].title).toBe('First');
     expect(rows[0].status).toBe('draft');
-  });
-
-  it('rejects content creation without title or video_id', async () => {
-    const res = await app.request(
-      '/api/content',
-      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) },
-      env
-    );
-    expect(res.status).toBe(400);
   });
 
   it('fetches one content piece with its links and messages', async () => {

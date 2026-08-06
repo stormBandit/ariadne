@@ -962,21 +962,3 @@ async function initContentDetail() {
     }
   }
 }
-
-// ---------- New Content Form (new.html) ----------
-
-function initNewContentForm() {
-  qs('new-content-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const title = qs('field-title').value;
-    const video_type = qs('field-video-type').value;
-    const publish_date = qs('field-publish-date').value;
-    const source_url = qs('field-source-url').value;
-
-    const content = await api('/api/content', {
-      method: 'POST',
-      body: JSON.stringify({ title, video_type, publish_date, source_url }),
-    });
-    window.location.href = `/content?id=${content.video_id}`;
-  });
-}

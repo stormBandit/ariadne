@@ -38,7 +38,6 @@ youtube_videos           links                     messages
 | Method | Path | What it's for |
 |---|---|---|
 | `GET` | `/api/content` | List every video, newest first — powers the dashboard view |
-| `POST` | `/api/content` | Create a video (title + source URL; `video_id` is derived from the URL if not passed explicitly) |
 | `GET` | `/api/content/:id` | Fetch one video (looked up by `video_id`) along with all its links and messages — powers the detail view |
 | `PUT` | `/api/content/:id` | Update a video's fields (e.g. mark it `live` once published) |
 | `DELETE` | `/api/content/:id` | Delete a video — cascades to delete its links and messages |

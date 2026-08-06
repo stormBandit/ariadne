@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { syncYouTubeUploads, videoIdFromUrl } from './youtube';
+import { syncYouTubeUploads } from './youtube';
 import { createDeepLink } from './openinapp';
 
 type Bindings = {
@@ -17,24 +17,6 @@ app.get('/api/content', async (c) => {
     'SELECT * FROM youtube_videos ORDER BY created_at DESC'
   ).all();
   return c.json(results);
-});
-
-app.post('/api/content', async (c) => {
-  const { title, source_url, video_id, publish_date, status, video_type } = await c.req.json();
-  const videoId = video_id ?? (source_url ? videoIdFromUrl(source_url) : null);
-  if (!title || !videoId) {
-    return c.json({ error: 'title is required, and video_id (or a parseable source_url) is required' }, 400);
-  }
-  await c.env.DB.prepare(
-    `INSERT INTO youtube_videos (video_id, title, source_url, publish_date, status, video_type)
-     VALUES (?, ?, ?, ?, COALESCE(?, 'draft'), COALESCE(?, 'video'))`
-  )
-    .bind(videoId, title, source_url ?? null, publish_date ?? null, status ?? null, video_type ?? null)
-    .run();
-  const row = await c.env.DB.prepare('SELECT * FROM youtube_videos WHERE video_id = ?')
-    .bind(videoId)
-    .first();
-  return c.json(row, 201);
 });
 
 app.get('/api/content/:id', async (c) => {

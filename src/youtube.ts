@@ -120,17 +120,6 @@ export interface SyncResult {
   insertedTitles: string[];
 }
 
-export function videoIdFromUrl(sourceUrl: string): string | null {
-  try {
-    const parsed = new URL(sourceUrl);
-    if (parsed.hostname.includes('youtu.be')) return parsed.pathname.slice(1);
-    if (parsed.pathname.startsWith('/shorts/')) return parsed.pathname.replace('/shorts/', '');
-    return parsed.searchParams.get('v');
-  } catch {
-    return null;
-  }
-}
-
 // Reclassifies existing DB entries by re-running the redirect check and
 // re-fetching status from the API, updating any fields that have changed.
 async function reclassifyExisting(db: D1Database, apiKey: string): Promise<number> {
