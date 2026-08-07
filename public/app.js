@@ -41,9 +41,11 @@ function validateLinkUrl(type, urlStr) {
     return 'Enter a valid URL.';
   }
   const host = parsed.hostname.toLowerCase();
+  const isOpenInAppHost = (h) =>
+    h === 'openinapp.co' || h.endsWith('.openinapp.co') || h === 'oia.bio' || h.endsWith('.oia.bio');
   if (type === 'openinapp') {
-    if (host !== 'openinapp.co' && !host.endsWith('.openinapp.co')) {
-      return 'OpenInApp links must be on openinapp.co.';
+    if (!isOpenInAppHost(host)) {
+      return 'OpenInApp links must be on openinapp.co or oia.bio.';
     }
   } else if (type === 'creatorurls') {
     if ((host !== 'creatorurls.com' && !host.endsWith('.creatorurls.com')) || !parsed.pathname.startsWith('/tns/s/')) {
@@ -299,6 +301,27 @@ async function initDashboard() {
       card.className = 'card';
       card.href = `/content?id=${item.video_id}`;
 
+      const videoId = item.video_id;
+
+      // Thumbnail — fixed 16:9 box with object-fit: cover, so the image is
+      // never upscaled or stretched out of aspect (the source of the blur).
+      // maxresdefault isn't generated for every video, so fall back to
+      // hqdefault (always available) if it 404s.
+      if (videoId) {
+        const thumbWrap = document.createElement('div');
+        thumbWrap.className = 'thumbnail';
+        const thumb = document.createElement('img');
+        thumb.src = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
+        thumb.alt = item.title;
+        thumb.loading = 'lazy';
+        thumb.addEventListener('error', () => {
+          thumb.onerror = null;
+          thumb.src = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+        }, { once: true });
+        thumbWrap.appendChild(thumb);
+        card.appendChild(thumbWrap);
+      }
+
       // Title
       const top = document.createElement('div');
       top.className = 'card-top';
@@ -320,17 +343,6 @@ async function initDashboard() {
       publishedDate.className = 'pub-date';
       publishedDate.textContent = formatDate(item.publish_date);
       card.appendChild(publishedDate);
-
-      // Thumbnail
-      const videoId = item.video_id;
-      if (videoId) {
-        const thumb = document.createElement('img');
-        thumb.className = 'thumbnail';
-        thumb.src = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
-        thumb.alt = item.title;
-        thumb.loading = 'lazy';
-        card.appendChild(thumb);
-      }
 
       // Go To Studio / Go To Watch buttons
       if (videoId || item.source_url) {
