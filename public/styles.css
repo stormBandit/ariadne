@@ -413,13 +413,39 @@ button.danger {
   flex: 1;
 }
 
-.variant-row input[type="file"] {
-  flex: 1;
-  padding: 6px 8px;
-}
-
 .variant-row input[type="number"] {
   width: 120px;
+}
+
+.variant-paste-box {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  cursor: text;
+  padding: 4px 8px;
+}
+
+.variant-paste-box:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.variant-paste-placeholder {
+  font-size: 12px;
+  color: var(--text-dim);
+  text-align: center;
+}
+
+.variant-file-fallback {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
 }
 
 .variant-preview {
@@ -431,9 +457,21 @@ button.danger {
 }
 
 .variant-thumbnail {
-  width: 120px;
-  height: 68px;
+  width: 156px;
+  height: 88px;
   object-fit: cover;
   border-radius: 6px;
   border: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.image-lightbox-overlay {
+  cursor: zoom-out;
+}
+
+.image-lightbox-img {
+  max-width: 90vw;
+  max-height: 90vh;
+  border-radius: 8px;
+  cursor: default;
 }

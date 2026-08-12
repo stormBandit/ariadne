@@ -45,7 +45,6 @@ youtube_videos           links                     messages
 | `DELETE` | `/api/links/:id` | Remove a single link |
 | `POST` | `/api/content/:id/messages` | Save a DM automation message for a content piece (per platform/trigger word) |
 | `DELETE` | `/api/messages/:id` | Remove a single message |
-| `POST` | `/api/openinapp` | Proxies a source URL to the OpenInApp API and returns a deep link |
 
 Planned, not yet implemented:
 
@@ -60,7 +59,6 @@ Planned, not yet implemented:
    Browser (Pages) ─────▶│  Worker (Hono)   │─────▶  D1 (youtube_videos/links/messages)
                          └──────────────────┘
                                   │
-                                  ├──▶ OpenInApp API   (deep link generation)
                                   └──▶ Gemini API      (DM message generation)
 ```
 

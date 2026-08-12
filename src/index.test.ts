@@ -486,6 +486,66 @@ describe('tests endpoints', () => {
     expect(test.status).toBe('inconclusive');
   });
 
+  it('allows a thumbnail test with just 1 variant', async () => {
+    const content = await createContent();
+    const created = await app.request(
+      `/api/content/${content.video_id}/tests`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ test_type: 'thumbnail', variants: [{ value: 'thumb-a.jpg' }] }),
+      },
+      env
+    );
+    expect(created.status).toBe(201);
+    const test = (await created.json()) as { variants: any[] };
+    expect(test.variants).toHaveLength(1);
+  });
+
+  it('still rejects a title test with just 1 variant', async () => {
+    const content = await createContent();
+    const res = await app.request(
+      `/api/content/${content.video_id}/tests`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ test_type: 'title', variants: [{ value: 'only one' }] }),
+      },
+      env
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('allows updating a thumbnail test down to 1 variant', async () => {
+    const content = await createContent();
+    const created = await app.request(
+      `/api/content/${content.video_id}/tests`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          test_type: 'thumbnail',
+          variants: [{ value: 'thumb-a.jpg' }, { value: 'thumb-b.jpg' }],
+        }),
+      },
+      env
+    );
+    const test = (await created.json()) as { id: number };
+
+    const res = await app.request(
+      `/api/tests/${test.id}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ variants: [{ value: 'thumb-a.jpg' }] }),
+      },
+      env
+    );
+    expect(res.status).toBe(200);
+    const updated = (await res.json()) as { variants: any[] };
+    expect(updated.variants).toHaveLength(1);
+  });
+
   it('updates a test, replacing its variants wholesale', async () => {
     const content = await createContent();
     const created = await app.request(

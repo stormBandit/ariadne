@@ -1,13 +1,11 @@
 import { Hono } from 'hono';
 import { syncYouTubeUploads } from './youtube';
-import { createDeepLink } from './openinapp';
 
 type Bindings = {
   DB: D1Database;
   ASSETS: Fetcher;
   YOUTUBE_API_KEY: string;
   YOUTUBE_UPLOADS_PLAYLIST_ID: string;
-  OPENINAPP_API_KEY: string;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -203,11 +201,16 @@ app.delete('/api/keywords/:id', async (c) => {
   return c.body(null, 204);
 });
 
+// Title tests compare titles against each other, so at least 2 variants are
+// required. Thumbnail tests can just track a single thumbnail's performance.
+const MIN_VARIANTS: Record<string, number> = { title: 2, thumbnail: 1 };
+
 app.post('/api/content/:id/tests', async (c) => {
   const contentId = c.req.param('id');
   const { test_type, status, start_date, end_date, notes, variants } = await c.req.json();
-  if (!test_type || !Array.isArray(variants) || variants.length < 2) {
-    return c.json({ error: 'test_type and at least 2 variants are required' }, 400);
+  const minVariants = MIN_VARIANTS[test_type] ?? 2;
+  if (!test_type || !Array.isArray(variants) || variants.length < minVariants) {
+    return c.json({ error: `test_type and at least ${minVariants} variant(s) are required` }, 400);
   }
   if (variants.some((v) => !v.value)) {
     return c.json({ error: 'every variant requires a value' }, 400);
@@ -239,13 +242,16 @@ app.post('/api/content/:id/tests', async (c) => {
 
 app.put('/api/tests/:id', async (c) => {
   const id = c.req.param('id');
-  const existing = await c.env.DB.prepare('SELECT id FROM tests WHERE id = ?').bind(id).first();
+  const existing = await c.env.DB.prepare('SELECT id, test_type FROM tests WHERE id = ?')
+    .bind(id)
+    .first<{ id: number; test_type: string }>();
   if (!existing) {
     return c.json({ error: 'not found' }, 404);
   }
+  const minVariants = MIN_VARIANTS[existing.test_type] ?? 2;
   const { status, start_date, end_date, notes, variants } = await c.req.json();
-  if (!Array.isArray(variants) || variants.length < 2 || variants.some((v) => !v.value)) {
-    return c.json({ error: 'at least 2 variants with a value are required' }, 400);
+  if (!Array.isArray(variants) || variants.length < minVariants || variants.some((v) => !v.value)) {
+    return c.json({ error: `at least ${minVariants} variant(s) with a value are required` }, 400);
   }
   await c.env.DB.prepare(
     `UPDATE tests
@@ -298,19 +304,6 @@ app.post('/api/sync/youtube', async (c) => {
     return c.json(result);
   } catch (err) {
     return c.json({ error: err instanceof Error ? err.message : 'sync failed' }, 502);
-  }
-});
-
-app.post('/api/openinapp', async (c) => {
-  const { url } = await c.req.json();
-  if (!url) {
-    return c.json({ error: 'url is required' }, 400);
-  }
-  try {
-    const deepLink = await createDeepLink(c.env.OPENINAPP_API_KEY, url);
-    return c.json({ url: deepLink });
-  } catch (err) {
-    return c.json({ error: err instanceof Error ? err.message : 'OpenInApp request failed' }, 502);
   }
 });
 

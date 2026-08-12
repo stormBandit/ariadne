@@ -2,6 +2,10 @@
 // than the Pages frontend, set this to that origin (e.g. via a <meta> tag).
 const API_BASE = '';
 
+// Title tests compare titles against each other, so at least 2 variants are
+// required. Thumbnail tests can just track a single thumbnail's performance.
+const MIN_VARIANTS = { title: 2, thumbnail: 1 };
+
 async function api(path, options = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
@@ -80,6 +84,31 @@ function confirmModal(message) {
     confirmBtn.addEventListener('click', onConfirm);
     cancelBtn.addEventListener('click', onCancel);
   });
+}
+
+// Set up once per page. Click the overlay (or press Escape) to close;
+// clicking the image itself doesn't close it.
+function initImageLightbox() {
+  const overlay = qs('image-lightbox');
+  if (!overlay) return;
+  const img = qs('image-lightbox-img');
+
+  function close() {
+    overlay.style.display = 'none';
+    img.src = '';
+  }
+
+  overlay.addEventListener('click', close);
+  img.addEventListener('click', (e) => e.stopPropagation());
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && overlay.style.display !== 'none') close();
+  });
+
+  window.openImageLightbox = (src, alt) => {
+    img.src = src;
+    img.alt = alt || '';
+    overlay.style.display = 'flex';
+  };
 }
 
 function statusBadge(status) {
@@ -189,39 +218,71 @@ function compressImageToDataUrl(file, maxWidth = 640, maxHeight = 360, quality =
 function addVariantRow(container, placeholder, inputType = 'text', initial = null) {
   const row = document.createElement('div');
   row.className = 'variant-row';
-  // For file inputs, a browser can't be made to "pre-select" an existing
-  // image, so we remember the original value here and fall back to it in
-  // readVariantRows() if the user doesn't choose a replacement file.
-  row.dataset.originalValue = (initial && initial.value) || '';
+  // Single source of truth for the current image value (as a data URL).
+  // Updated by both the paste handler and the file-picker fallback.
+  row.dataset.currentValue = (initial && initial.value) || '';
 
   if (inputType === 'file') {
+    const pasteBox = document.createElement('div');
+    pasteBox.className = 'variant-paste-box';
+    pasteBox.tabIndex = 0;
+    pasteBox.setAttribute('role', 'button');
+
     const preview = document.createElement('img');
     preview.className = 'variant-preview';
-    if (initial && initial.value) {
-      preview.src = initial.value;
-      preview.style.display = '';
-    } else {
-      preview.style.display = 'none';
-    }
 
-    const valueInput = document.createElement('input');
-    valueInput.type = 'file';
-    valueInput.accept = 'image/*';
-    valueInput.addEventListener('change', () => {
-      const file = valueInput.files[0];
-      if (!file) {
-        preview.style.display = row.dataset.originalValue ? '' : 'none';
-        if (row.dataset.originalValue) preview.src = row.dataset.originalValue;
-        return;
-      }
-      compressImageToDataUrl(file).then((dataUrl) => {
+    const placeholderText = document.createElement('span');
+    placeholderText.className = 'variant-paste-placeholder';
+    placeholderText.textContent = 'Click here, then paste (⌘V) an image';
+
+    function showValue(dataUrl) {
+      if (dataUrl) {
         preview.src = dataUrl;
         preview.style.display = '';
+        placeholderText.style.display = 'none';
+      } else {
+        preview.style.display = 'none';
+        placeholderText.style.display = '';
+      }
+    }
+    showValue(row.dataset.currentValue);
+
+    function setImage(file) {
+      if (!file) return;
+      compressImageToDataUrl(file).then((dataUrl) => {
+        row.dataset.currentValue = dataUrl;
+        showValue(dataUrl);
       });
+    }
+
+    pasteBox.addEventListener('paste', (e) => {
+      const item = Array.from(e.clipboardData?.items || []).find((i) => i.type.startsWith('image/'));
+      if (item) {
+        e.preventDefault();
+        setImage(item.getAsFile());
+      }
     });
 
-    row.appendChild(preview);
-    row.appendChild(valueInput);
+    pasteBox.appendChild(preview);
+    pasteBox.appendChild(placeholderText);
+    row.appendChild(pasteBox);
+
+    // Hidden fallback for picking a file the old way, for anyone without
+    // an image on their clipboard.
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'image/*';
+    fileInput.className = 'variant-file-fallback';
+    fileInput.addEventListener('change', () => setImage(fileInput.files[0]));
+
+    const browseBtn = document.createElement('button');
+    browseBtn.type = 'button';
+    browseBtn.className = 'small secondary';
+    browseBtn.textContent = 'or choose a file';
+    browseBtn.addEventListener('click', () => fileInput.click());
+
+    row.appendChild(fileInput);
+    row.appendChild(browseBtn);
   } else {
     const valueInput = document.createElement('input');
     valueInput.type = 'text';
@@ -244,24 +305,17 @@ function addVariantRow(container, placeholder, inputType = 'text', initial = nul
   container.appendChild(row);
 }
 
-async function readVariantRows(container) {
+function readVariantRows(container) {
   const rows = Array.from(container.querySelectorAll('.variant-row'));
-  const variants = await Promise.all(
-    rows.map(async (row) => {
-      const valueInput = row.querySelector('input[type="text"], input[type="file"]');
-      const shareInput = row.querySelector('input[type="number"]');
-      const value =
-        valueInput.type === 'file'
-          ? valueInput.files[0]
-            ? await compressImageToDataUrl(valueInput.files[0])
-            : row.dataset.originalValue || ''
-          : valueInput.value.trim();
-      return {
-        value,
-        watch_time_share: shareInput.value ? Number(shareInput.value) : null,
-      };
-    })
-  );
+  const variants = rows.map((row) => {
+    const textInput = row.querySelector('input[type="text"]');
+    const shareInput = row.querySelector('input[type="number"]');
+    const value = textInput ? textInput.value.trim() : row.dataset.currentValue || '';
+    return {
+      value,
+      watch_time_share: shareInput.value ? Number(shareInput.value) : null,
+    };
+  });
   return variants.filter((variant) => variant.value);
 }
 
@@ -428,6 +482,18 @@ async function initContentDetail() {
   const content = await api(`/api/content/${id}`);
   let editingLinkId = null;
   let editingTestId = null;
+  initImageLightbox();
+
+  const tabChips = document.querySelectorAll('[data-tab]');
+  const tabPanels = document.querySelectorAll('[data-tab-panel]');
+  tabChips.forEach((chip) => {
+    chip.addEventListener('click', () => {
+      tabChips.forEach((c) => c.classList.toggle('active', c === chip));
+      tabPanels.forEach((panel) => {
+        panel.style.display = panel.dataset.tabPanel === chip.dataset.tab ? '' : 'none';
+      });
+    });
+  });
 
   qs('title').textContent = content.title;
   qs('status-badge').replaceWith(statusBadge(content.status));
@@ -445,30 +511,12 @@ async function initContentDetail() {
 
   renderLinks(content.links);
   renderMessages(content.messages);
-  updateOpenInAppUI();
-
-  function hasOpenInAppLink() {
-    return content.links.some((link) => link.type === 'openinapp');
-  }
-
-  function updateOpenInAppUI() {
-    const exists = hasOpenInAppLink();
-    qs('generate-openinapp-link').style.display = exists ? 'none' : '';
-    qs('link-type').querySelector('option[value="openinapp"]').disabled = exists;
-    if (exists && qs('link-type').value === 'openinapp') {
-      qs('link-type').value = 'creatorurls';
-    }
-  }
 
   qs('add-link-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const type = qs('link-type').value;
     const url = qs('link-url').value;
     const label = qs('link-label').value;
-    if (type === 'openinapp' && hasOpenInAppLink()) {
-      qs('generate-openinapp-status').textContent = 'An OpenInApp link already exists for this content.';
-      return;
-    }
     const validationError = validateLinkUrl(type, url);
     if (validationError) {
       qs('link-form-status').textContent = validationError;
@@ -481,38 +529,7 @@ async function initContentDetail() {
     });
     content.links.push(link);
     renderLinks(content.links);
-    updateOpenInAppUI();
     e.target.reset();
-  });
-
-  qs('generate-openinapp-link').addEventListener('click', async () => {
-    const button = qs('generate-openinapp-link');
-    const status = qs('generate-openinapp-status');
-    if (hasOpenInAppLink()) {
-      status.textContent = 'An OpenInApp link already exists for this content.';
-      return;
-    }
-    if (!content.source_url) {
-      status.textContent = 'No source URL to generate a link from.';
-      return;
-    }
-    button.disabled = true;
-    button.textContent = 'Generating...';
-    status.textContent = '';
-    try {
-      const { url } = await api('/api/openinapp', {
-        method: 'POST',
-        body: JSON.stringify({ url: content.source_url }),
-      });
-      qs('link-type').value = 'openinapp';
-      qs('link-url').value = url;
-      qs('add-link-form').requestSubmit();
-    } catch (err) {
-      status.textContent = `Generation failed: ${err.message}`;
-    } finally {
-      button.disabled = false;
-      button.textContent = 'Generate OpenInApp Link';
-    }
   });
 
   qs('add-message-form').addEventListener('submit', async (e) => {
@@ -680,8 +697,9 @@ async function initContentDetail() {
         saveBtn.textContent = 'Save';
         saveBtn.addEventListener('click', async () => {
           const variants = await readVariantRows(variantsContainer);
-          if (variants.length < 2) {
-            editStatusErrorMsg.textContent = 'Add at least 2 variants.';
+          const minVariants = MIN_VARIANTS[testType] ?? 2;
+          if (variants.length < minVariants) {
+            editStatusErrorMsg.textContent = `Add at least ${minVariants} variant(s).`;
             return;
           }
           const editShares = variants.map((v) => v.watch_time_share);
@@ -757,6 +775,7 @@ async function initContentDetail() {
           const img = document.createElement('img');
           img.className = 'variant-thumbnail';
           img.src = variant.value;
+          img.addEventListener('click', () => window.openImageLightbox(variant.value, content.title));
           row.appendChild(img);
         } else {
           const value = document.createElement('span');
@@ -823,8 +842,9 @@ async function initContentDetail() {
       e.preventDefault();
       statusMsg.textContent = '';
       const variants = await readVariantRows(variantsContainer);
-      if (variants.length < 2) {
-        statusMsg.textContent = 'Add at least 2 variants.';
+      const minVariants = MIN_VARIANTS[testType] ?? 2;
+      if (variants.length < minVariants) {
+        statusMsg.textContent = `Add at least ${minVariants} variant(s).`;
         return;
       }
       const shares = variants.map((v) => v.watch_time_share);
@@ -931,7 +951,6 @@ async function initContentDetail() {
           content.links[idx] = updated;
           editingLinkId = null;
           renderLinks(content.links);
-          updateOpenInAppUI();
         });
         editActions.appendChild(saveBtn);
 
@@ -978,7 +997,6 @@ async function initContentDetail() {
         await api(`/api/links/${link.id}`, { method: 'DELETE' });
         content.links = content.links.filter((l) => l.id !== link.id);
         renderLinks(content.links);
-        updateOpenInAppUI();
       });
       actions.appendChild(delBtn);
 
