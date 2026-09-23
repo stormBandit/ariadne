@@ -32,6 +32,13 @@ CREATE TABLE content_changelog (
 );
 `;
 
+// Lets a test attach title/thumbnail data to the shared, persistent
+// mockVideoStatuses handler for specific video IDs — this is how tests
+// simulate reclassifyExisting (the videos.list?part=snippet,status pass over
+// every stored video) noticing a change on a video that ISN'T part of the
+// mocked playlistItems ("recent uploads") response.
+const videoSnippetOverrides = new Map<string, { title?: string; thumbnailUrl?: string }>();
+
 beforeAll(async () => {
   for (const statement of SCHEMA.trim().split(';').map((s) => s.trim()).filter(Boolean)) {
     await env.DB.prepare(statement).run();
@@ -49,6 +56,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   await env.DB.exec('DELETE FROM content_changelog');
   await env.DB.exec('DELETE FROM youtube_videos');
+  videoSnippetOverrides.clear();
 });
 
 function mockPlaylistItems(
@@ -96,7 +104,23 @@ function mockVideoStatuses(privacyStatus: string) {
     .reply(200, (opts) => {
       const query = opts.path.split('?')[1] || '';
       const ids = (new URLSearchParams(query).get('id') || '').split(',').filter(Boolean);
-      return { items: ids.map((id) => ({ id, status: { privacyStatus } })) };
+      return {
+        items: ids.map((id) => {
+          const override = videoSnippetOverrides.get(id);
+          return {
+            id,
+            status: { privacyStatus },
+            ...(override
+              ? {
+                  snippet: {
+                    title: override.title,
+                    ...(override.thumbnailUrl ? { thumbnails: { high: { url: override.thumbnailUrl } } } : {}),
+                  },
+                }
+              : {}),
+          };
+        }),
+      };
     })
     .persist();
 }
@@ -295,6 +319,65 @@ describe('syncYouTubeUploads', () => {
       .bind('v1')
       .first();
     expect(row).toEqual({ thumbnail_url: 'https://img.example/first.jpg' });
+  });
+
+  it('catches a title/thumbnail change on a video outside the recent-uploads window', async () => {
+    // v-old is NOT in the mocked playlistItems response below, simulating a
+    // video that scrolled out of the "recent uploads" playlist. Only the
+    // reclassifyExisting pass (which checks every stored video, not just
+    // recently-fetched ones) can catch its title/thumbnail change.
+    await env.DB.prepare(
+      `INSERT INTO youtube_videos (video_id, title, source_url, status, thumbnail_url) VALUES (?, ?, ?, 'live', ?)`
+    )
+      .bind('v-old', 'Old Title From Months Ago', 'https://www.youtube.com/watch?v=v-old', 'https://img.example/old.jpg')
+      .run();
+
+    videoSnippetOverrides.set('v-old', {
+      title: 'Retitled Old Video',
+      thumbnailUrl: 'https://img.example/retitled.jpg',
+    });
+
+    mockPlaylistItems([{ videoId: 'v-new', title: 'Unrelated Recent Upload', publishedAt: '2026-01-05T00:00:00Z' }]);
+
+    const result = await syncYouTubeUploads(env.DB, 'fake-key', 'UUxxxx');
+    // Both changes on v-old (title + thumbnail), found via reclassifyExisting.
+    expect(result.changelogged).toBe(2);
+
+    const row = await env.DB.prepare('SELECT title, thumbnail_url FROM youtube_videos WHERE video_id = ?')
+      .bind('v-old')
+      .first();
+    expect(row).toEqual({ title: 'Retitled Old Video', thumbnail_url: 'https://img.example/retitled.jpg' });
+
+    const { results } = await env.DB.prepare(
+      'SELECT change_type, old_value, new_value FROM content_changelog WHERE video_id = ? ORDER BY change_type'
+    )
+      .bind('v-old')
+      .all();
+    expect(results).toEqual([
+      { change_type: 'thumbnail', old_value: 'https://img.example/old.jpg', new_value: 'https://img.example/retitled.jpg' },
+      { change_type: 'title', old_value: 'Old Title From Months Ago', new_value: 'Retitled Old Video' },
+    ]);
+  });
+
+  it('does not log a changelog entry for a stored video the API returns no snippet for', async () => {
+    // No override set for v-old, mirroring mockVideoStatuses's default
+    // response shape (status only, no snippet) — reclassifyExisting must not
+    // treat "no data returned" as "changed to undefined/empty".
+    await env.DB.prepare(
+      `INSERT INTO youtube_videos (video_id, title, source_url, status, thumbnail_url) VALUES (?, ?, ?, 'live', ?)`
+    )
+      .bind('v-old', 'Untouched Title', 'https://www.youtube.com/watch?v=v-old', 'https://img.example/untouched.jpg')
+      .run();
+
+    mockPlaylistItems([]);
+
+    const result = await syncYouTubeUploads(env.DB, 'fake-key', 'UUxxxx');
+    expect(result.changelogged).toBe(0);
+
+    const row = await env.DB.prepare('SELECT title, thumbnail_url FROM youtube_videos WHERE video_id = ?')
+      .bind('v-old')
+      .first();
+    expect(row).toEqual({ title: 'Untouched Title', thumbnail_url: 'https://img.example/untouched.jpg' });
   });
 
   it('POST /api/sync/youtube returns 502 on API failure', async () => {

@@ -5,16 +5,27 @@
 Last updated: 2026-09-23 (uncommitted — Auto-Changelog Steps 1-3 on top of commit `8409584`)
 Completed: Core workflow (YouTube sync, dashboard/detail, links, DM messages, keywords, A/B tests). Auto-Changelog
 Steps 1-3: `content_changelog` table + `youtube_videos.thumbnail_url` column (local D1 migrated, remote D1 still
-needs the same migration run), sync logic now diffs title/thumbnail on every sync and logs changes atomically,
-test coverage added (10 tests in `youtube.test.ts`, up from 5). Added `@vitest/coverage-istanbul` +
+needs the same migration run), sync logic diffs title/thumbnail and logs changes atomically. Test coverage added
+(12 tests in `youtube.test.ts`, up from 5; 40 total, up from 33). Added `@vitest/coverage-istanbul` +
 `npm run test:coverage` to track coverage going forward — baseline 94.2%/84.37%/88.23%/95.89%
-(stmts/branch/funcs/lines); currently 94.14%/85.41%/88.88%/96.15%, effectively flat (the 0.06pp stmt dip is
+(stmts/branch/funcs/lines); currently 94.14%/86.07%/89.18%/96.41%, effectively flat (the 0.06pp stmt dip is
 pre-existing untested error branches, not new code).
+
+**Scope fix (caught by Dalton before it shipped as a latent bug):** the first version of Step 2 only diffed
+videos returned by the "recent uploads" fetch (last 10), so an edit to an older video's title/thumbnail would
+never be detected — that video never re-enters the "recent" window. Fixed by extending `reclassifyExisting`
+(which already loops over every stored video each sync, for status/type/URL reclassification) to also request
+`part=snippet` on its existing `videos.list` call and diff title/thumbnail there — same number of API requests,
+richer response, now covers every stored video, not just the last 10. Ran the real sync once locally against
+all 100 previously-stored videos as a result: 99 thumbnail backfills + 4 title corrections logged, 1 video
+skipped (YouTube API returns no maxres/high thumbnail for it — correctly left alone rather than overwritten
+with nothing).
 In progress: Auto-Changelog Step 4 (Change History UI) is intentionally deferred pending the UI revamp — do not
 build it yet. Removing remaining OpenInApp references (`links.type = 'openinapp'` legacy value) still pending.
 Blocked on: nothing currently.
 Next: Run the schema migration (`thumbnail_url` column + `content_changelog` table) against remote/production D1
-— see "Development" below for the commands; local D1 is already migrated. Then finish the OpenInApp cleanup.
+— see "Development" below for the commands; local D1 is already migrated and backfilled. Then finish the
+OpenInApp cleanup.
 
 _This file is the shared plan between Claude Code (this repo) and the Cowork planning agent. See "Sync
 convention" below for who owns which section. "What changed since the original plan" is the decision log._
@@ -375,6 +386,12 @@ Phase 3 requires OAuth (YouTube Analytics API, read-only). The existing YouTube 
 - Pull channel-level: channel average CTR (baseline for flagging underperformers)
 - Store weekly snapshots in D1 so metrics are tracked over time, not just point-in-time
 - "Last synced" timestamp visible per video; manual sync button + optional scheduled sync
+- **First-login full backfill:** when a new user connects their channel via OAuth, run one full sync/reclassify
+  pass over their whole video history (not just recent uploads) before showing them the dashboard, so the
+  changelog and analytics start from a complete baseline rather than only what happens to sync going forward.
+  This is the multi-tenant equivalent of the one-off local backfill Claude Code ran manually during
+  single-tenant development (2026-09-23) — in the live product it needs to be an automatic part of onboarding,
+  not a manual step.
 
 ---
 

@@ -28,7 +28,20 @@ interface VideosListResponse {
   items?: Array<{
     id?: string;
     status?: { privacyStatus?: string };
+    snippet?: {
+      title?: string;
+      thumbnails?: {
+        maxres?: { url?: string };
+        high?: { url?: string };
+      };
+    };
   }>;
+}
+
+interface VideoDetails {
+  status: 'live' | 'draft';
+  title?: string;
+  thumbnailUrl?: string;
 }
 
 // Resolves whether a video ID is a Short by following the /shorts/ redirect.
@@ -43,14 +56,17 @@ async function resolveVideoUrl(videoId: string): Promise<{ sourceUrl: string; vi
   };
 }
 
-// Fetches privacy status for a batch of video IDs (max 50 per call).
-// Maps privacyStatus: 'public' -> 'live', everything else -> 'draft'.
-async function fetchVideoStatuses(apiKey: string, videoIds: string[]): Promise<Map<string, 'live' | 'draft'>> {
-  const statuses = new Map<string, 'live' | 'draft'>();
+// Fetches status, title, and thumbnail for a batch of video IDs (max 50 per
+// call). Requesting `part=snippet,status` in one call (rather than two
+// separate calls) is what lets reclassifyExisting check every stored video
+// for title/thumbnail changes at no extra request cost beyond the status
+// check it already did. Maps privacyStatus: 'public' -> 'live', else 'draft'.
+async function fetchVideoDetails(apiKey: string, videoIds: string[]): Promise<Map<string, VideoDetails>> {
+  const details = new Map<string, VideoDetails>();
   for (let i = 0; i < videoIds.length; i += 50) {
     const batch = videoIds.slice(i, i + 50);
     const url = new URL('https://www.googleapis.com/youtube/v3/videos');
-    url.searchParams.set('part', 'status');
+    url.searchParams.set('part', 'snippet,status');
     url.searchParams.set('id', batch.join(','));
     url.searchParams.set('key', apiKey);
 
@@ -62,12 +78,15 @@ async function fetchVideoStatuses(apiKey: string, videoIds: string[]): Promise<M
 
     const body = (await res.json()) as VideosListResponse;
     for (const item of body.items ?? []) {
-      if (item.id) {
-        statuses.set(item.id, item.status?.privacyStatus === 'public' ? 'live' : 'draft');
-      }
+      if (!item.id) continue;
+      details.set(item.id, {
+        status: item.status?.privacyStatus === 'public' ? 'live' : 'draft',
+        title: item.snippet?.title,
+        thumbnailUrl: item.snippet?.thumbnails?.maxres?.url ?? item.snippet?.thumbnails?.high?.url,
+      });
     }
   }
-  return statuses;
+  return details;
 }
 
 export async function fetchRecentUploads(
@@ -103,9 +122,9 @@ export async function fetchRecentUploads(
     rawVideos.push({ videoId, title, publishedAt, thumbnailUrl });
   }
 
-  const [resolvedUrls, statuses] = await Promise.all([
+  const [resolvedUrls, videoDetails] = await Promise.all([
     Promise.all(rawVideos.map(async (v) => ({ videoId: v.videoId, ...(await resolveVideoUrl(v.videoId)) }))),
-    fetchVideoStatuses(apiKey, rawVideos.map((v) => v.videoId)),
+    fetchVideoDetails(apiKey, rawVideos.map((v) => v.videoId)),
   ]);
 
   const urlMap = new Map(resolvedUrls.map((r) => [r.videoId, r]));
@@ -114,7 +133,7 @@ export async function fetchRecentUploads(
     ...v,
     sourceUrl: urlMap.get(v.videoId)?.sourceUrl ?? `https://www.youtube.com/watch?v=${v.videoId}`,
     videoType: urlMap.get(v.videoId)?.videoType ?? 'video',
-    status: statuses.get(v.videoId) ?? 'live',
+    status: videoDetails.get(v.videoId)?.status ?? 'live',
   }));
 }
 
@@ -151,33 +170,59 @@ async function applyContentChanges(db: D1Database, videoId: string, changes: Con
   await db.batch(statements);
 }
 
-// Reclassifies existing DB entries by re-running the redirect check and
-// re-fetching status from the API, updating any fields that have changed.
-async function reclassifyExisting(db: D1Database, apiKey: string): Promise<number> {
+// Reclassifies every stored video (not just the ones fetchRecentUploads just
+// returned) by re-running the redirect check and re-fetching status, title,
+// and thumbnail from the API, updating any fields that have changed. This is
+// what catches a title/thumbnail edit on an old video that's long since
+// fallen out of the "recent uploads" window fetchRecentUploads looks at.
+async function reclassifyExisting(
+  db: D1Database,
+  apiKey: string
+): Promise<{ reclassified: number; changelogged: number }> {
   const { results } = await db
-    .prepare('SELECT video_id FROM youtube_videos')
-    .all<{ video_id: string }>();
+    .prepare('SELECT video_id, title, thumbnail_url FROM youtube_videos')
+    .all<{ video_id: string; title: string; thumbnail_url: string | null }>();
 
   const videoIds = results.map((r) => r.video_id);
 
-  const [resolvedUrls, statuses] = await Promise.all([
+  const [resolvedUrls, videoDetails] = await Promise.all([
     Promise.all(videoIds.map(async (id) => ({ videoId: id, ...(await resolveVideoUrl(id)) }))),
-    fetchVideoStatuses(apiKey, videoIds),
+    fetchVideoDetails(apiKey, videoIds),
   ]);
 
+  const urlMap = new Map(resolvedUrls.map((r) => [r.videoId, r]));
+
   let reclassified = 0;
-  for (const resolved of resolvedUrls) {
-    const status = statuses.get(resolved.videoId) ?? 'live';
-    const { meta } = await db
-      .prepare(
-        'UPDATE youtube_videos SET source_url = ?, video_type = ?, status = ? WHERE video_id = ? AND (source_url != ? OR video_type != ? OR status != ?)'
-      )
-      .bind(resolved.sourceUrl, resolved.videoType, status, resolved.videoId, resolved.sourceUrl, resolved.videoType, status)
-      .run();
-    if (meta.changes > 0) reclassified++;
+  let changelogged = 0;
+  for (const row of results) {
+    const resolved = urlMap.get(row.video_id);
+    const details = videoDetails.get(row.video_id);
+    const status = details?.status ?? 'live';
+
+    if (resolved) {
+      const { meta } = await db
+        .prepare(
+          'UPDATE youtube_videos SET source_url = ?, video_type = ?, status = ? WHERE video_id = ? AND (source_url != ? OR video_type != ? OR status != ?)'
+        )
+        .bind(resolved.sourceUrl, resolved.videoType, status, row.video_id, resolved.sourceUrl, resolved.videoType, status)
+        .run();
+      if (meta.changes > 0) reclassified++;
+    }
+
+    const changes: ContentChange[] = [];
+    if (details?.title && details.title !== row.title) {
+      changes.push({ type: 'title', oldValue: row.title, newValue: details.title });
+    }
+    if (details?.thumbnailUrl && details.thumbnailUrl !== row.thumbnail_url) {
+      changes.push({ type: 'thumbnail', oldValue: row.thumbnail_url, newValue: details.thumbnailUrl });
+    }
+    if (changes.length > 0) {
+      await applyContentChanges(db, row.video_id, changes);
+      changelogged += changes.length;
+    }
   }
 
-  return reclassified;
+  return { reclassified, changelogged };
 }
 
 export async function syncYouTubeUploads(
@@ -239,7 +284,9 @@ export async function syncYouTubeUploads(
     result.insertedTitles.push(video.title);
   }
 
-  result.reclassified = await reclassifyExisting(db, apiKey);
+  const reclassifyResult = await reclassifyExisting(db, apiKey);
+  result.reclassified = reclassifyResult.reclassified;
+  result.changelogged += reclassifyResult.changelogged;
 
   return result;
 }
