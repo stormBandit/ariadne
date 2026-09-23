@@ -1,11 +1,12 @@
 CREATE TABLE youtube_videos (
-  video_id    TEXT PRIMARY KEY,     -- YouTube's own video ID, e.g. 'Xnk2Budn0zA'
-  title       TEXT NOT NULL,
-  source_url  TEXT,                 -- original URL (e.g. the YouTube video URL)
-  publish_date TEXT,
-  status      TEXT DEFAULT 'draft', -- 'draft', 'scheduled', 'live'
-  video_type  TEXT NOT NULL DEFAULT 'video', -- 'video', 'short'
-  created_at  TEXT DEFAULT CURRENT_TIMESTAMP
+  video_id      TEXT PRIMARY KEY,     -- YouTube's own video ID, e.g. 'Xnk2Budn0zA'
+  title         TEXT NOT NULL,
+  source_url    TEXT,                 -- original URL (e.g. the YouTube video URL)
+  publish_date  TEXT,
+  status        TEXT DEFAULT 'draft', -- 'draft', 'scheduled', 'live'
+  video_type    TEXT NOT NULL DEFAULT 'video', -- 'video', 'short'
+  thumbnail_url TEXT,                 -- current live thumbnail, synced from YouTube Data API
+  created_at    TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE links (
@@ -52,4 +53,28 @@ CREATE TABLE test_variants (
   value             TEXT NOT NULL, -- title text, or thumbnail description/URL
   watch_time_share  REAL,          -- percentage, e.g. 62.0; null if inconclusive
   created_at        TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Auto-detected title/thumbnail changes, written by the YouTube sync when it
+-- notices the live title or thumbnail_url differs from what's stored. Separate
+-- from `tests`, which tracks intentional, manually-logged A/B experiments.
+CREATE TABLE content_changelog (
+  id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+  video_id                  TEXT REFERENCES youtube_videos(video_id) ON DELETE CASCADE,
+  user_id                   TEXT NOT NULL DEFAULT 'dalton',
+  changed_at                TEXT NOT NULL,
+  change_type               TEXT NOT NULL CHECK (change_type IN ('title', 'thumbnail')),
+  old_value                 TEXT,
+  new_value                 TEXT,
+  -- CTR/watch-duration fields: all NULL until Phase 3 OAuth is connected.
+  -- ctr_before/avg_view_duration_before = the 28 days leading up to the detected change.
+  -- ctr_after/avg_view_duration_after = the 28 days starting ~2 weeks post-change; stays
+  -- NULL until the threshold is met (2 weeks elapsed + 500 impressions after).
+  ctr_before                REAL,
+  impressions_before        INTEGER,
+  avg_view_duration_before  INTEGER,  -- seconds
+  ctr_after                 REAL,
+  impressions_after         INTEGER,
+  avg_view_duration_after   INTEGER,  -- seconds
+  created_at                TEXT DEFAULT CURRENT_TIMESTAMP
 );

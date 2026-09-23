@@ -9,7 +9,7 @@ Read the relevant existing file(s) first, `src/index.ts` for routes, `src/youtub
 ## Constraints
 
 - **$0-cost.** Every dependency should be free-tier or free outright. Flag anything that would introduce a real cost before adding it.
-- **Avoid OAuth.** Everything so far uses API keys as Wrangler secrets, no OAuth flow anywhere in this repo. Don't introduce one without it being explicitly called for in `PLAN.md` for the phase you're on.
+- **Avoid OAuth outside a planned phase.** Everything currently uses API keys as Wrangler secrets. Phase 3 (YouTube Analytics) is planned to introduce OAuth — don't build it early, and don't introduce OAuth for anything else without it being explicitly called for in `PLAN.md` for the phase you're on.
 - **No CDN chart libraries.** Any chart (existing or new) is inline SVG, hand-built, no Chart.js or similar. Keeps pages self-contained.
 - **Additive changes.** Extend existing tables and files rather than replacing them. Don't rename existing fields, routes, or table names without being told to.
 - **Handle external API failures gracefully.** Return a clear JSON error, don't let the Worker throw uncaught. Match the pattern already in the `/api/sync/youtube` handler in `src/index.ts`.

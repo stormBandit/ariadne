@@ -7,5 +7,10 @@ export default defineWorkersConfig({
         wrangler: { configPath: './wrangler.toml' },
       },
     },
+    coverage: {
+      provider: 'istanbul',
+      include: ['src/**/*.ts'],
+      exclude: ['src/**/*.test.ts', 'src/env.d.ts'],
+    },
   },
 });

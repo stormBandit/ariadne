@@ -5,6 +5,7 @@ export interface YouTubeVideo {
   sourceUrl: string;
   videoType: 'video' | 'short';
   status: 'live' | 'draft';
+  thumbnailUrl?: string;
 }
 
 export class YouTubeApiError extends Error {}
@@ -15,6 +16,10 @@ interface PlaylistItemsResponse {
       title?: string;
       publishedAt?: string;
       resourceId?: { videoId?: string };
+      thumbnails?: {
+        maxres?: { url?: string };
+        high?: { url?: string };
+      };
     };
   }>;
 }
@@ -88,13 +93,14 @@ export async function fetchRecentUploads(
     throw new YouTubeApiError('YouTube API response missing items array');
   }
 
-  const rawVideos: Array<{ videoId: string; title: string; publishedAt: string }> = [];
+  const rawVideos: Array<{ videoId: string; title: string; publishedAt: string; thumbnailUrl?: string }> = [];
   for (const item of body.items) {
     const videoId = item.snippet?.resourceId?.videoId;
     const title = item.snippet?.title;
     const publishedAt = item.snippet?.publishedAt;
     if (!videoId || !title || !publishedAt) continue;
-    rawVideos.push({ videoId, title, publishedAt });
+    const thumbnailUrl = item.snippet?.thumbnails?.maxres?.url ?? item.snippet?.thumbnails?.high?.url;
+    rawVideos.push({ videoId, title, publishedAt, thumbnailUrl });
   }
 
   const [resolvedUrls, statuses] = await Promise.all([
@@ -117,7 +123,32 @@ export interface SyncResult {
   inserted: number;
   skipped: number;
   reclassified: number;
+  changelogged: number;
   insertedTitles: string[];
+}
+
+type ContentChange = { type: 'title' | 'thumbnail'; oldValue: string | null; newValue: string };
+
+// Applies a video's detected title/thumbnail changes and writes their
+// content_changelog rows in a single D1 batch, so the stored value and its
+// log entry can never drift out of sync.
+async function applyContentChanges(db: D1Database, videoId: string, changes: ContentChange[]): Promise<void> {
+  if (changes.length === 0) return;
+  const changedAt = new Date().toISOString();
+  const statements = changes.flatMap((change) => [
+    db
+      .prepare(
+        `UPDATE youtube_videos SET ${change.type === 'title' ? 'title' : 'thumbnail_url'} = ? WHERE video_id = ?`
+      )
+      .bind(change.newValue, videoId),
+    db
+      .prepare(
+        `INSERT INTO content_changelog (video_id, changed_at, change_type, old_value, new_value)
+         VALUES (?, ?, ?, ?, ?)`
+      )
+      .bind(videoId, changedAt, change.type, change.oldValue, change.newValue),
+  ]);
+  await db.batch(statements);
 }
 
 // Reclassifies existing DB entries by re-running the redirect check and
@@ -156,25 +187,52 @@ export async function syncYouTubeUploads(
 ): Promise<SyncResult> {
   const videos = await fetchRecentUploads(apiKey, uploadsPlaylistId);
 
-  const result: SyncResult = { fetched: videos.length, inserted: 0, skipped: 0, reclassified: 0, insertedTitles: [] };
+  const result: SyncResult = {
+    fetched: videos.length,
+    inserted: 0,
+    skipped: 0,
+    reclassified: 0,
+    changelogged: 0,
+    insertedTitles: [],
+  };
 
   for (const video of videos) {
     const existing = await db
-      .prepare('SELECT video_id FROM youtube_videos WHERE video_id = ?')
+      .prepare('SELECT title, thumbnail_url FROM youtube_videos WHERE video_id = ?')
       .bind(video.videoId)
-      .first();
+      .first<{ title: string; thumbnail_url: string | null }>();
 
     if (existing) {
       result.skipped++;
+
+      const changes: ContentChange[] = [];
+      if (video.title !== existing.title) {
+        changes.push({ type: 'title', oldValue: existing.title, newValue: video.title });
+      }
+      if (video.thumbnailUrl && video.thumbnailUrl !== existing.thumbnail_url) {
+        changes.push({ type: 'thumbnail', oldValue: existing.thumbnail_url, newValue: video.thumbnailUrl });
+      }
+      if (changes.length > 0) {
+        await applyContentChanges(db, video.videoId, changes);
+        result.changelogged += changes.length;
+      }
       continue;
     }
 
     await db
       .prepare(
-        `INSERT INTO youtube_videos (video_id, title, source_url, publish_date, status, video_type)
-         VALUES (?, ?, ?, ?, ?, ?)`
+        `INSERT INTO youtube_videos (video_id, title, source_url, publish_date, status, video_type, thumbnail_url)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
       )
-      .bind(video.videoId, video.title, video.sourceUrl, video.publishedAt, video.status, video.videoType)
+      .bind(
+        video.videoId,
+        video.title,
+        video.sourceUrl,
+        video.publishedAt,
+        video.status,
+        video.videoType,
+        video.thumbnailUrl ?? null
+      )
       .run();
 
     result.inserted++;

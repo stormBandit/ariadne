@@ -5,18 +5,37 @@ import { fetchRecentUploads, syncYouTubeUploads } from './youtube';
 
 const SCHEMA = `
 CREATE TABLE youtube_videos (
-  video_id    TEXT PRIMARY KEY,
-  title       TEXT NOT NULL,
-  source_url  TEXT,
-  publish_date TEXT,
-  status      TEXT DEFAULT 'draft',
-  video_type  TEXT NOT NULL DEFAULT 'video',
-  created_at  TEXT DEFAULT CURRENT_TIMESTAMP
+  video_id      TEXT PRIMARY KEY,
+  title         TEXT NOT NULL,
+  source_url    TEXT,
+  publish_date  TEXT,
+  status        TEXT DEFAULT 'draft',
+  video_type    TEXT NOT NULL DEFAULT 'video',
+  thumbnail_url TEXT,
+  created_at    TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE content_changelog (
+  id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+  video_id                  TEXT REFERENCES youtube_videos(video_id) ON DELETE CASCADE,
+  user_id                   TEXT NOT NULL DEFAULT 'dalton',
+  changed_at                TEXT NOT NULL,
+  change_type               TEXT NOT NULL CHECK (change_type IN ('title', 'thumbnail')),
+  old_value                 TEXT,
+  new_value                 TEXT,
+  ctr_before                REAL,
+  impressions_before        INTEGER,
+  avg_view_duration_before  INTEGER,
+  ctr_after                 REAL,
+  impressions_after         INTEGER,
+  avg_view_duration_after   INTEGER,
+  created_at                TEXT DEFAULT CURRENT_TIMESTAMP
 );
 `;
 
 beforeAll(async () => {
-  await env.DB.prepare(SCHEMA.trim()).run();
+  for (const statement of SCHEMA.trim().split(';').map((s) => s.trim()).filter(Boolean)) {
+    await env.DB.prepare(statement).run();
+  }
   fetchMock.activate();
   fetchMock.disableNetConnect();
   // Persistent mocks for the /shorts/ redirect check and the videos.list status
@@ -28,11 +47,12 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
+  await env.DB.exec('DELETE FROM content_changelog');
   await env.DB.exec('DELETE FROM youtube_videos');
 });
 
 function mockPlaylistItems(
-  videos: Array<{ videoId: string; title: string; publishedAt: string }>
+  videos: Array<{ videoId: string; title: string; publishedAt: string; thumbnailUrl?: string }>
 ) {
   fetchMock
     .get('https://www.googleapis.com')
@@ -43,6 +63,7 @@ function mockPlaylistItems(
           title: v.title,
           publishedAt: v.publishedAt,
           resourceId: { videoId: v.videoId },
+          ...(v.thumbnailUrl ? { thumbnails: { high: { url: v.thumbnailUrl } } } : {}),
         },
       })),
     });
@@ -143,6 +164,137 @@ describe('syncYouTubeUploads', () => {
 
     const { results } = await env.DB.prepare('SELECT * FROM youtube_videos').all();
     expect(results).toHaveLength(3);
+  });
+
+  it('logs a changelog entry and updates the stored title when it changes', async () => {
+    await env.DB.prepare(
+      `INSERT INTO youtube_videos (video_id, title, source_url, status, thumbnail_url) VALUES (?, ?, ?, 'draft', ?)`
+    )
+      .bind('v1', 'Old Title', 'https://www.youtube.com/watch?v=v1', 'https://img.example/old.jpg')
+      .run();
+
+    mockPlaylistItems([
+      {
+        videoId: 'v1',
+        title: 'New Title',
+        publishedAt: '2026-01-01T00:00:00Z',
+        thumbnailUrl: 'https://img.example/old.jpg',
+      },
+    ]);
+
+    const result = await syncYouTubeUploads(env.DB, 'fake-key', 'UUxxxx');
+    expect(result.skipped).toBe(1);
+    expect(result.changelogged).toBe(1);
+
+    const row = await env.DB.prepare('SELECT title FROM youtube_videos WHERE video_id = ?').bind('v1').first();
+    expect(row).toEqual({ title: 'New Title' });
+
+    const { results } = await env.DB.prepare('SELECT * FROM content_changelog').all();
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({
+      video_id: 'v1',
+      change_type: 'title',
+      old_value: 'Old Title',
+      new_value: 'New Title',
+    });
+  });
+
+  it('logs a changelog entry and updates the stored thumbnail_url when it changes', async () => {
+    await env.DB.prepare(
+      `INSERT INTO youtube_videos (video_id, title, source_url, status, thumbnail_url) VALUES (?, ?, ?, 'draft', ?)`
+    )
+      .bind('v1', 'Same Title', 'https://www.youtube.com/watch?v=v1', 'https://img.example/old.jpg')
+      .run();
+
+    mockPlaylistItems([
+      {
+        videoId: 'v1',
+        title: 'Same Title',
+        publishedAt: '2026-01-01T00:00:00Z',
+        thumbnailUrl: 'https://img.example/new.jpg',
+      },
+    ]);
+
+    const result = await syncYouTubeUploads(env.DB, 'fake-key', 'UUxxxx');
+    expect(result.changelogged).toBe(1);
+
+    const row = await env.DB.prepare('SELECT thumbnail_url FROM youtube_videos WHERE video_id = ?')
+      .bind('v1')
+      .first();
+    expect(row).toEqual({ thumbnail_url: 'https://img.example/new.jpg' });
+
+    const { results } = await env.DB.prepare('SELECT * FROM content_changelog').all();
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({
+      video_id: 'v1',
+      change_type: 'thumbnail',
+      old_value: 'https://img.example/old.jpg',
+      new_value: 'https://img.example/new.jpg',
+    });
+  });
+
+  it('writes no changelog rows when title and thumbnail are unchanged', async () => {
+    await env.DB.prepare(
+      `INSERT INTO youtube_videos (video_id, title, source_url, status, thumbnail_url) VALUES (?, ?, ?, 'draft', ?)`
+    )
+      .bind('v1', 'Same Title', 'https://www.youtube.com/watch?v=v1', 'https://img.example/same.jpg')
+      .run();
+
+    mockPlaylistItems([
+      {
+        videoId: 'v1',
+        title: 'Same Title',
+        publishedAt: '2026-01-01T00:00:00Z',
+        thumbnailUrl: 'https://img.example/same.jpg',
+      },
+    ]);
+
+    const result = await syncYouTubeUploads(env.DB, 'fake-key', 'UUxxxx');
+    expect(result.changelogged).toBe(0);
+
+    const { results } = await env.DB.prepare('SELECT * FROM content_changelog').all();
+    expect(results).toHaveLength(0);
+  });
+
+  it('writes two changelog rows when both title and thumbnail change in the same sync', async () => {
+    await env.DB.prepare(
+      `INSERT INTO youtube_videos (video_id, title, source_url, status, thumbnail_url) VALUES (?, ?, ?, 'draft', ?)`
+    )
+      .bind('v1', 'Old Title', 'https://www.youtube.com/watch?v=v1', 'https://img.example/old.jpg')
+      .run();
+
+    mockPlaylistItems([
+      {
+        videoId: 'v1',
+        title: 'New Title',
+        publishedAt: '2026-01-01T00:00:00Z',
+        thumbnailUrl: 'https://img.example/new.jpg',
+      },
+    ]);
+
+    const result = await syncYouTubeUploads(env.DB, 'fake-key', 'UUxxxx');
+    expect(result.changelogged).toBe(2);
+
+    const { results } = await env.DB.prepare('SELECT change_type FROM content_changelog ORDER BY change_type').all();
+    expect(results).toEqual([{ change_type: 'thumbnail' }, { change_type: 'title' }]);
+  });
+
+  it('stores thumbnail_url on insert for new videos', async () => {
+    mockPlaylistItems([
+      {
+        videoId: 'v1',
+        title: 'First',
+        publishedAt: '2026-01-01T00:00:00Z',
+        thumbnailUrl: 'https://img.example/first.jpg',
+      },
+    ]);
+
+    await syncYouTubeUploads(env.DB, 'fake-key', 'UUxxxx');
+
+    const row = await env.DB.prepare('SELECT thumbnail_url FROM youtube_videos WHERE video_id = ?')
+      .bind('v1')
+      .first();
+    expect(row).toEqual({ thumbnail_url: 'https://img.example/first.jpg' });
   });
 
   it('POST /api/sync/youtube returns 502 on API failure', async () => {
