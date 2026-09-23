@@ -12,7 +12,7 @@ CREATE TABLE youtube_videos (
 CREATE TABLE links (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   content_id  TEXT REFERENCES youtube_videos(video_id) ON DELETE CASCADE,
-  type        TEXT NOT NULL, -- 'openinapp', 'creatorurls', 'affiliate', 'other'
+  type        TEXT NOT NULL, -- 'openinapp' (legacy, no longer creatable in the UI), 'creatorurls', 'affiliate', 'other'
   label       TEXT,
   url         TEXT NOT NULL,
   created_at  TEXT DEFAULT CURRENT_TIMESTAMP

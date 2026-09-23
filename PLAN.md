@@ -2,14 +2,16 @@
 
 ## Current Status
 
-Last updated: 2026-09-23 (uncommitted — Auto-Changelog Steps 1-3 on top of commit `8409584`)
+Last updated: 2026-09-23 (commits `12781e8`, `08b18d1` pushed to origin/main)
 Completed: Core workflow (YouTube sync, dashboard/detail, links, DM messages, keywords, A/B tests). Auto-Changelog
-Steps 1-3: `content_changelog` table + `youtube_videos.thumbnail_url` column (local D1 migrated, remote D1 still
-needs the same migration run), sync logic diffs title/thumbnail and logs changes atomically. Test coverage added
-(12 tests in `youtube.test.ts`, up from 5; 40 total, up from 33). Added `@vitest/coverage-istanbul` +
-`npm run test:coverage` to track coverage going forward — baseline 94.2%/84.37%/88.23%/95.89%
-(stmts/branch/funcs/lines); currently 94.14%/86.07%/89.18%/96.41%, effectively flat (the 0.06pp stmt dip is
-pre-existing untested error branches, not new code).
+Steps 1-3: `content_changelog` table + `youtube_videos.thumbnail_url` column, sync logic diffs title/thumbnail
+(including the reclassify fix covering *all* stored videos, not just the last 10) and logs changes atomically.
+Test coverage added (12 tests in `youtube.test.ts`, up from 5; 40 total, up from 33) plus
+`@vitest/coverage-istanbul` + `npm run test:coverage` to track it going forward — baseline
+94.2%/84.37%/88.23%/95.89% (stmts/branch/funcs/lines); currently 94.14%/86.07%/89.18%/96.41%, effectively flat
+(the 0.06pp stmt dip is pre-existing untested error branches, not new code). Also: removed `'openinapp'` from
+the Add-link dropdown (`content.html`) so no new OpenInApp links can be created — see "What changed" for the
+full OpenInApp cleanup detail.
 
 **Scope fix (caught by Dalton before it shipped as a latent bug):** the first version of Step 2 only diffed
 videos returned by the "recent uploads" fetch (last 10), so an edit to an older video's title/thumbnail would
@@ -19,13 +21,17 @@ never be detected — that video never re-enters the "recent" window. Fixed by e
 richer response, now covers every stored video, not just the last 10. Ran the real sync once locally against
 all 100 previously-stored videos as a result: 99 thumbnail backfills + 4 title corrections logged, 1 video
 skipped (YouTube API returns no maxres/high thumbnail for it — correctly left alone rather than overwritten
-with nothing).
+with nothing; that video (`n0X_0AavGuE`) turned out to be deleted/private on YouTube's side entirely — API
+returns zero items for it — and was deleted from local D1 at Dalton's request).
 In progress: Auto-Changelog Step 4 (Change History UI) is intentionally deferred pending the UI revamp — do not
-build it yet. Removing remaining OpenInApp references (`links.type = 'openinapp'` legacy value) still pending.
-Blocked on: nothing currently.
-Next: Run the schema migration (`thumbnail_url` column + `content_changelog` table) against remote/production D1
-— see "Development" below for the commands; local D1 is already migrated and backfilled. Then finish the
-OpenInApp cleanup.
+build it yet, see "What the plan says about Auto-Changelog's UI" note below for the exact wording.
+Blocked on: remote D1 migration (`thumbnail_url` column + `content_changelog` table) — wrangler isn't
+authenticated in the Claude Code environment (`Failed to fetch auth token`), needs Dalton to run `wrangler login`
+or provide a `CLOUDFLARE_API_TOKEN` first. Commands are under "Development" below; local D1 is already migrated
+and backfilled.
+Next: once remote D1 auth is sorted, run the migration there. Local OpenInApp UI cleanup is done (see "What
+changed"); the `links.type = 'openinapp'` value itself is intentionally left alone on existing rows (25 of them
+locally) — additive-changes rule, don't rewrite historical data without being told to.
 
 _This file is the shared plan between Claude Code (this repo) and the Cowork planning agent. See "Sync
 convention" below for who owns which section. "What changed since the original plan" is the decision log._
@@ -50,12 +56,19 @@ rather than the original assumptions.
   calls oEmbed to fetch title/thumbnail on demand. This was built, then removed (`4d8f3f0 Removing all the
   manual adding of content`). Videos now enter the system exclusively through the YouTube sync (see below) —
   one source of truth, no drift between manually-entered and synced data.
-- **OpenInApp is being removed entirely, not integrated.** Phase 4 in the original plan was "OpenInApp
-  Integration" (API key, deep-link generation endpoint, status dot in the table). That got built
+- **OpenInApp is being removed entirely, not integrated. (DONE, 2026-09-23)** Phase 4 in the original plan was
+  "OpenInApp Integration" (API key, deep-link generation endpoint, status dot in the table). That got built
   (`8938ac9`), then reversed: the generate-link button was pulled first (`e22b266`, "phase 0 of removing
-  openinapp entirely from our flow") and the rest is expected to follow. `links.type` still has `'openinapp'`
-  as a legacy value in the schema comment but no active code path creates one anymore. Don't re-propose
-  OpenInApp integration without checking in first — this was a deliberate reversal, not an oversight.
+  openinapp entirely from our flow"), and the cleanup finished by removing `'openinapp'` from the Add-link
+  dropdown in `content.html` — no UI path creates a new OpenInApp link anymore. What's intentionally still
+  there: `links.type = 'openinapp'` remains a valid value in `schema.sql` (marked legacy in its comment), the
+  API still accepts it if posted directly (no server-side allowlist), and the *edit*-link dropdown in `app.js`
+  still lists it as an option — all three exist only so the 25 existing openinapp-type link rows (local D1)
+  stay viewable/editable/deletable without corrupting their type on save. This is the additive-changes rule:
+  don't rewrite or drop historical data without being told to. `OPENINAPP_API_KEY` isn't in local `.dev.vars`;
+  didn't check remote secrets (wrangler auth unavailable in this environment) — if it's set as a remote secret,
+  revoking it is a manual step outside this repo. Don't re-propose OpenInApp integration without
+  checking in first — this was a deliberate reversal, not an oversight.
 - **Keyword tracking replaced speech analysis as the "Part 2" intelligence feature.** The original Phase 7 was
   filler-word/transcript analysis. That was dropped before being built. In its place: a `keywords` table
   tracking targeted keywords with a TubeBuddy weighted score (0–100) and a search-volume tier (`Poor` / `Fair`
@@ -245,9 +258,12 @@ No Chart.js, no external chart library — badges and status indicators are plai
 
 ## Immediate priorities (next up, not yet scheduled into phases)
 
-1. Finish removing OpenInApp: drop the `'openinapp'` link type from active use once confirmed nothing still
-   writes it (currently only the button was removed, per `e22b266`).
-2. Build the Auto-Changelog feature — see full substeps below.
+1. ~~Finish removing OpenInApp~~ **DONE (2026-09-23).** `'openinapp'` dropped from the Add-link dropdown; no UI
+   path creates new ones. See the "What changed" entry for what was intentionally left alone (legacy rows,
+   schema comment, edit dropdown, API acceptance) and why.
+2. ~~Build the Auto-Changelog feature~~ **DONE, Steps 1-3 (2026-09-23).** Schema, sync diffing, and tests are in;
+   remote D1 still needs the migration run once wrangler auth is available (see Current Status). Step 4 (UI)
+   stays deferred pending the UI revamp.
 3. No current plan to revive speech/transcript analysis — keyword tracking took its place. Don't resurrect it
    without an explicit ask.
 
@@ -321,15 +337,19 @@ In `youtube.test.ts`, add cases for:
 - No changes → no writes
 - Both changed in same sync → two changelog rows
 
-Also added: thumbnail_url is stored on insert for new videos. All 5 cases implemented; suite is now 10 tests
-in `youtube.test.ts` (was 5), 38 total across the project (was 33). Coverage tracked via
-`@vitest/coverage-istanbul` + `npm run test:coverage` (config in `vitest.config.ts`) — see Current Status for
-baseline vs. current numbers. Scope note: the diff only checks videos returned by the recent-uploads fetch
-(default last 10), not every row in the DB — older videos that scroll out of that window won't get diffed
-until they're re-fetched. Matches the existing `reclassifyExisting` split (that function handles
-status/type/URL reclassification for *all* stored videos separately, via a lighter API call); extending
-title/thumbnail diffing to all stored videos would cost an extra quota-consuming API call per video and wasn't
-asked for — flag if that scope is actually wanted.
+Also added: thumbnail_url is stored on insert for new videos. All 5 cases implemented, suite was 10 tests in
+`youtube.test.ts` at that point (was 5), 38 total (was 33). Coverage tracked via `@vitest/coverage-istanbul` +
+`npm run test:coverage` (config in `vitest.config.ts`) — see Current Status for baseline vs. current numbers.
+
+**Scope gap found and fixed (2026-09-23):** the version above only checked videos returned by the
+recent-uploads fetch (last 10) — older videos that scrolled out of that window would never get diffed. Caught
+by Dalton before it shipped as a live bug. Fixed by extending `reclassifyExisting` (which already loops over
+*all* stored videos each sync, for status/type/URL reclassification) to also request `part=snippet` on its
+existing `videos.list` call and diff title/thumbnail there too — no extra API requests, since it's the same
+call reclassifyExisting was already making, just with a richer response. Now every stored video gets checked on
+every sync, not just the last 10. 2 more tests added for this (title/thumbnail change on a video outside the
+mocked recent-uploads response, and confirming "no snippet data returned" isn't treated as "changed to
+nothing") — 12 tests in `youtube.test.ts`, 40 total.
 
 ### Step 4 — Change History UI (DEFERRED — pending UI revamp)
 
@@ -564,7 +584,7 @@ Claude Code should maintain a `STATUS.md` at the repo root — a short file (< 2
 |---|---|---|
 | `YOUTUBE_API_KEY` | Google Cloud Console | In use (sync) |
 | `GEMINI_API_KEY` | aistudio.google.com, free, no card | Not yet added — needed once DM generation is built |
-| `OPENINAPP_API_KEY` | openinapp.com dashboard | Being phased out — do not add back without explicit direction |
+| `OPENINAPP_API_KEY` | openinapp.com dashboard | Removed feature (2026-09-23) — not in local `.dev.vars`; if set remotely, revoking it is a manual step outside this repo. Do not add back without explicit direction |
 
 ---
 

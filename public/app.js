@@ -900,6 +900,9 @@ async function initContentDetail() {
         editFields.style.gap = '6px';
 
         const typeSelect = document.createElement('select');
+        // 'openinapp' is no longer offered on the Add-link form (content.html) — it's
+        // kept here only so existing openinapp-type links can still be viewed/edited
+        // without their type silently changing to whatever option happens to be first.
         for (const type of ['openinapp', 'creatorurls', 'affiliate', 'other']) {
           const opt = document.createElement('option');
           opt.value = type;
