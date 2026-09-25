@@ -7,13 +7,17 @@
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <div class="page">
-    <header class="top">
-      <h1>Ariadne</h1>
-      <div style="display: flex; gap: 8px;">
-        <button id="sync-youtube" class="secondary">Sync now</button>
-      </div>
-    </header>
+  <nav class="app-nav">
+    <a class="nav-brand" href="/">Ariadne</a>
+    <!-- Nav links intentionally empty until Phase 3 adds CTR Health as a second page.
+         A nav link with only one destination adds noise without value. -->
+    <div class="nav-links">
+      <!-- Phase 3: <a class="nav-link" href="/ctr-health">CTR Health</a> -->
+    </div>
+    <button id="sync-youtube" class="secondary small">Sync</button>
+  </nav>
+
+  <div class="page page-wide">
     <div id="sync-status" class="meta" style="margin-bottom: 12px;"></div>
 
     <div class="filters">
@@ -24,10 +28,21 @@
       <span class="chip" data-type-filter="shorts">Shorts</span>
     </div>
 
-    <div id="content-list" class="content-list"></div>
+    <table class="content-table" id="content-table">
+      <thead>
+        <tr>
+          <th class="col-thumb"></th>
+          <th>Title</th>
+          <th class="col-test">Test</th>
+        </tr>
+      </thead>
+      <tbody id="content-table-body"></tbody>
+    </table>
+    <div id="content-empty" class="empty-state" style="display: none;"></div>
   </div>
 
-  <script src="/app.js"></script>
+  <script src="/utils.js"></script>
+  <script src="/dashboard.js"></script>
   <script>initDashboard();</script>
 </body>
 </html>

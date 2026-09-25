@@ -1,480 +1,3 @@
-// Same-origin by default. If the Worker API is hosted on a different domain
-// than the Pages frontend, set this to that origin (e.g. via a <meta> tag).
-const API_BASE = '';
-
-// Title tests compare titles against each other, so at least 2 variants are
-// required. Thumbnail tests can just track a single thumbnail's performance.
-const MIN_VARIANTS = { title: 2, thumbnail: 1 };
-
-async function api(path, options = {}) {
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `Request failed: ${res.status}`);
-  }
-  if (res.status === 204) return null;
-  return res.json();
-}
-
-function qs(id) {
-  return document.getElementById(id);
-}
-
-function copyToClipboard(text, button) {
-  navigator.clipboard.writeText(text).then(() => {
-    const original = button.textContent;
-    button.textContent = 'Copied!';
-    setTimeout(() => {
-      button.textContent = original;
-    }, 1200);
-  });
-}
-
-// Returns an error message string if the URL doesn't belong on the given
-// link type, or null if it's valid. Only openinapp/creatorurls have a known,
-// fixed link format; affiliate/other links vary by platform so we only
-// require them to be a well-formed URL.
-function validateLinkUrl(type, urlStr) {
-  let parsed;
-  try {
-    parsed = new URL(urlStr);
-  } catch {
-    return 'Enter a valid URL.';
-  }
-  const host = parsed.hostname.toLowerCase();
-  const isOpenInAppHost = (h) =>
-    h === 'openinapp.co' || h.endsWith('.openinapp.co') || h === 'oia.bio' || h.endsWith('.oia.bio');
-  if (type === 'openinapp') {
-    if (!isOpenInAppHost(host)) {
-      return 'OpenInApp links must be on openinapp.co or oia.bio.';
-    }
-  } else if (type === 'creatorurls') {
-    if ((host !== 'creatorurls.com' && !host.endsWith('.creatorurls.com')) || !parsed.pathname.startsWith('/tns/s/')) {
-      return 'CreatorURLs links must look like https://creatorurls.com/tns/s/...';
-    }
-  }
-  return null;
-}
-
-function confirmModal(message) {
-  return new Promise((resolve) => {
-    const overlay = qs('confirm-modal');
-    qs('confirm-modal-message').textContent = message;
-    overlay.style.display = 'flex';
-
-    const confirmBtn = qs('confirm-modal-confirm');
-    const cancelBtn = qs('confirm-modal-cancel');
-
-    function cleanup(result) {
-      overlay.style.display = 'none';
-      confirmBtn.removeEventListener('click', onConfirm);
-      cancelBtn.removeEventListener('click', onCancel);
-      resolve(result);
-    }
-    function onConfirm() {
-      cleanup(true);
-    }
-    function onCancel() {
-      cleanup(false);
-    }
-
-    confirmBtn.addEventListener('click', onConfirm);
-    cancelBtn.addEventListener('click', onCancel);
-  });
-}
-
-// Set up once per page. Click the overlay (or press Escape) to close;
-// clicking the image itself doesn't close it.
-function initImageLightbox() {
-  const overlay = qs('image-lightbox');
-  if (!overlay) return;
-  const img = qs('image-lightbox-img');
-
-  function close() {
-    overlay.style.display = 'none';
-    img.src = '';
-  }
-
-  overlay.addEventListener('click', close);
-  img.addEventListener('click', (e) => e.stopPropagation());
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && overlay.style.display !== 'none') close();
-  });
-
-  window.openImageLightbox = (src, alt) => {
-    img.src = src;
-    img.alt = alt || '';
-    overlay.style.display = 'flex';
-  };
-}
-
-function statusBadge(status) {
-  const span = document.createElement('span');
-  span.className = `badge ${status}`;
-  span.textContent = status;
-  return span;
-}
-
-// Small inline icons so test-status badges are distinguishable by shape, not
-// just color — useful once a thumbnail-test badge sits next to this one.
-const TITLE_TEST_ICON =
-  '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" xmlns="http://www.w3.org/2000/svg">' +
-  '<path d="M4 6h16M4 12h10M4 18h13" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>';
-
-function iconBadge(className, label, iconMarkup, tooltip) {
-  const span = document.createElement('span');
-  span.className = `badge badge-icon ${className}`;
-  if (tooltip) span.title = tooltip;
-  const icon = document.createElement('span');
-  icon.className = 'badge-icon-glyph';
-  icon.innerHTML = iconMarkup;
-  icon.setAttribute('aria-hidden', 'true');
-  span.appendChild(icon);
-  const text = document.createElement('span');
-  text.textContent = label;
-  span.appendChild(text);
-  return span;
-}
-
-// Derives a title-test badge from the most recently created title test for
-// a video (if any). A test with no end_date yet is treated as still running.
-function titleTestBadge(item) {
-  let className;
-  let label;
-  if (!item.title_test_status) {
-    className = 'title-test-none';
-    label = 'None';
-  } else if (!item.title_test_end_date) {
-    className = 'title-test-progress';
-    label = 'In Progress';
-  } else if (item.title_test_status === 'conclusive') {
-    className = 'title-test-conclusive';
-    label = 'Conclusive';
-  } else {
-    className = 'title-test-inconclusive';
-    label = 'Inconclusive';
-  }
-  return iconBadge(className, label, TITLE_TEST_ICON, 'Title Test Status');
-}
-
-function formatDate(value) {
-  if (!value) return '';
-  // Plain "YYYY-MM-DD" values (from <input type="date">) have no time
-  // component, so `new Date(value)` parses them as UTC midnight — converting
-  // that to local time for display can roll it back a day in timezones
-  // behind UTC. Parse the components directly as a local date instead.
-  const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  const date = dateOnlyMatch
-    ? new Date(Number(dateOnlyMatch[1]), Number(dateOnlyMatch[2]) - 1, Number(dateOnlyMatch[3]))
-    : new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-}
-
-function formatDateRange(start, end) {
-  if (!start && !end) return 'Dates not recorded';
-  if (start && end) return `${formatDate(start)} – ${formatDate(end)}`;
-  return formatDate(start || end);
-}
-
-function fileToDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
-}
-
-// Thumbnails are stored as base64 directly in a D1 TEXT column, which has a
-// hard per-value size limit (SQLITE_TOOBIG if exceeded). A raw phone/camera
-// image easily blows past that, so downscale to a reasonable thumbnail size
-// and re-encode as JPEG before it's ever base64-encoded.
-function compressImageToDataUrl(file, maxWidth = 640, maxHeight = 360, quality = 0.8) {
-  return new Promise((resolve, reject) => {
-    const objectUrl = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      URL.revokeObjectURL(objectUrl);
-      const scale = Math.min(1, maxWidth / img.width, maxHeight / img.height);
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.round(img.width * scale);
-      canvas.height = Math.round(img.height * scale);
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      resolve(canvas.toDataURL('image/jpeg', quality));
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      reject(new Error('Could not read image file'));
-    };
-    img.src = objectUrl;
-  });
-}
-
-function addVariantRow(container, placeholder, inputType = 'text', initial = null) {
-  const row = document.createElement('div');
-  row.className = 'variant-row';
-  // Single source of truth for the current image value (as a data URL).
-  // Updated by both the paste handler and the file-picker fallback.
-  row.dataset.currentValue = (initial && initial.value) || '';
-
-  if (inputType === 'file') {
-    const pasteBox = document.createElement('div');
-    pasteBox.className = 'variant-paste-box';
-    pasteBox.tabIndex = 0;
-    pasteBox.setAttribute('role', 'button');
-
-    const preview = document.createElement('img');
-    preview.className = 'variant-preview';
-
-    const placeholderText = document.createElement('span');
-    placeholderText.className = 'variant-paste-placeholder';
-    placeholderText.textContent = 'Click here, then paste (⌘V) an image';
-
-    function showValue(dataUrl) {
-      if (dataUrl) {
-        preview.src = dataUrl;
-        preview.style.display = '';
-        placeholderText.style.display = 'none';
-      } else {
-        preview.style.display = 'none';
-        placeholderText.style.display = '';
-      }
-    }
-    showValue(row.dataset.currentValue);
-
-    function setImage(file) {
-      if (!file) return;
-      compressImageToDataUrl(file).then((dataUrl) => {
-        row.dataset.currentValue = dataUrl;
-        showValue(dataUrl);
-      });
-    }
-
-    pasteBox.addEventListener('paste', (e) => {
-      const item = Array.from(e.clipboardData?.items || []).find((i) => i.type.startsWith('image/'));
-      if (item) {
-        e.preventDefault();
-        setImage(item.getAsFile());
-      }
-    });
-
-    pasteBox.appendChild(preview);
-    pasteBox.appendChild(placeholderText);
-    row.appendChild(pasteBox);
-
-    // Hidden fallback for picking a file the old way, for anyone without
-    // an image on their clipboard.
-    const fileInput = document.createElement('input');
-    fileInput.type = 'file';
-    fileInput.accept = 'image/*';
-    fileInput.className = 'variant-file-fallback';
-    fileInput.addEventListener('change', () => setImage(fileInput.files[0]));
-
-    const browseBtn = document.createElement('button');
-    browseBtn.type = 'button';
-    browseBtn.className = 'small secondary';
-    browseBtn.textContent = 'or choose a file';
-    browseBtn.addEventListener('click', () => fileInput.click());
-
-    row.appendChild(fileInput);
-    row.appendChild(browseBtn);
-  } else {
-    const valueInput = document.createElement('input');
-    valueInput.type = 'text';
-    valueInput.placeholder = placeholder;
-    valueInput.value = (initial && initial.value) || '';
-    row.appendChild(valueInput);
-  }
-
-  const shareInput = document.createElement('input');
-  shareInput.type = 'number';
-  shareInput.min = '0';
-  shareInput.max = '100';
-  shareInput.step = '0.1';
-  shareInput.placeholder = 'Watch time share %';
-  if (initial && initial.watch_time_share !== null && initial.watch_time_share !== undefined) {
-    shareInput.value = initial.watch_time_share;
-  }
-  row.appendChild(shareInput);
-
-  container.appendChild(row);
-}
-
-function readVariantRows(container) {
-  const rows = Array.from(container.querySelectorAll('.variant-row'));
-  const variants = rows.map((row) => {
-    const textInput = row.querySelector('input[type="text"]');
-    const shareInput = row.querySelector('input[type="number"]');
-    const value = textInput ? textInput.value.trim() : row.dataset.currentValue || '';
-    return {
-      value,
-      watch_time_share: shareInput.value ? Number(shareInput.value) : null,
-    };
-  });
-  return variants.filter((variant) => variant.value);
-}
-
-// ---------- Dashboard (index.html) ----------
-
-async function initDashboard() {
-  const list = qs('content-list');
-  const search = qs('search');
-  const typeChips = document.querySelectorAll('[data-type-filter]');
-
-  let items = await api('/api/content');
-  let typeFilter = 'videos';
-
-  function render() {
-    const term = search.value.trim().toLowerCase();
-    const filtered = items.filter((item) => {
-      const matchesTerm = !term || item.title.toLowerCase().includes(term) || item.video_id.toLowerCase().includes(term);
-      const matchesType = typeFilter === 'videos' ? item.video_type !== 'short' : item.video_type === 'short';
-      return matchesTerm && matchesType;
-    });
-
-    list.innerHTML = '';
-    if (filtered.length === 0) {
-      const empty = document.createElement('div');
-      empty.className = 'empty-state';
-      empty.textContent = items.length === 0
-        ? 'No content yet — add your first video.'
-        : 'No content matches your filters.';
-      list.appendChild(empty);
-      return;
-    }
-
-    for (const item of filtered) {
-      const wrapper = document.createElement('div');
-
-      const card = document.createElement('a');
-      card.className = 'card';
-      card.href = `/content?id=${item.video_id}`;
-
-      const videoId = item.video_id;
-
-      // Thumbnail — fixed 16:9 box with object-fit: cover, so the image is
-      // never upscaled or stretched out of aspect (the source of the blur).
-      // maxresdefault isn't generated for every video, so fall back to
-      // hqdefault (always available) if it 404s.
-      if (videoId) {
-        const thumbWrap = document.createElement('div');
-        thumbWrap.className = 'thumbnail';
-        const thumb = document.createElement('img');
-        thumb.src = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
-        thumb.alt = item.title;
-        thumb.loading = 'lazy';
-        thumb.addEventListener('error', () => {
-          thumb.onerror = null;
-          thumb.src = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
-        }, { once: true });
-        thumbWrap.appendChild(thumb);
-        card.appendChild(thumbWrap);
-      }
-
-      // Title
-      const top = document.createElement('div');
-      top.className = 'card-top';
-      const title = document.createElement('h3');
-      title.textContent = item.title;
-      top.appendChild(title);
-
-      const badges = document.createElement('div');
-      badges.style.display = 'flex';
-      badges.style.gap = '4px';
-      badges.appendChild(statusBadge(item.status));
-      badges.appendChild(titleTestBadge(item));
-      top.appendChild(badges);
-
-      card.appendChild(top);
-
-      // Published Date
-      const publishedDate = document.createElement('div');
-      publishedDate.className = 'pub-date';
-      publishedDate.textContent = formatDate(item.publish_date);
-      card.appendChild(publishedDate);
-
-      // Go To Studio / Go To Watch buttons
-      if (videoId || item.source_url) {
-        const linkRow = document.createElement('div');
-        linkRow.style.display = 'flex';
-        linkRow.style.gap = '6px';
-        linkRow.style.margin = '-4px 0 10px';
-
-        if (videoId) {
-          const studioLink = document.createElement('a');
-          studioLink.href = `https://studio.youtube.com/video/${videoId}/edit`;
-          studioLink.target = '_blank';
-          studioLink.rel = 'noopener';
-          studioLink.className = 'button small secondary';
-          studioLink.textContent = 'Go To Studio ↗';
-          linkRow.appendChild(studioLink);
-        }
-
-        if (item.source_url) {
-          const watchLink = document.createElement('a');
-          watchLink.href = item.source_url;
-          watchLink.target = '_blank';
-          watchLink.rel = 'noopener';
-          watchLink.className = 'button small secondary';
-          watchLink.textContent = 'Go To Watch ↗';
-          linkRow.appendChild(watchLink);
-        }
-
-        card.appendChild(linkRow);
-      }
-
-      wrapper.appendChild(card);
-      list.appendChild(wrapper);
-    }
-  }
-
-  search.addEventListener('input', render);
-  typeChips.forEach((chip) => {
-    chip.addEventListener('click', () => {
-      typeChips.forEach((c) => c.classList.remove('active'));
-      chip.classList.add('active');
-      typeFilter = chip.dataset.typeFilter;
-      render();
-    });
-  });
-
-  render();
-
-  window.addEventListener('keydown', (e) => {
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-      e.preventDefault();
-      window.location.href = '/new';
-    }
-  });
-
-  const syncButton = qs('sync-youtube');
-  const syncStatus = qs('sync-status');
-  syncButton.addEventListener('click', async () => {
-    syncButton.disabled = true;
-    syncButton.textContent = 'Syncing...';
-    syncStatus.textContent = '';
-    try {
-      const result = await api('/api/sync/youtube', { method: 'POST' });
-      const parts = [];
-      if (result.inserted > 0) parts.push(`${result.inserted} new video${result.inserted === 1 ? '' : 's'} added`);
-      if (result.reclassified > 0) parts.push(`${result.reclassified} reclassified`);
-      syncStatus.textContent = parts.length > 0 ? parts.join(', ') + '.' : 'No new videos.';
-      items = await api('/api/content');
-      render();
-    } catch (err) {
-      syncStatus.textContent = `Sync failed: ${err.message}`;
-    } finally {
-      syncButton.disabled = false;
-      syncButton.textContent = 'Sync now';
-    }
-  });
-}
-
 // ---------- Content Detail (content.html) ----------
 
 async function initContentDetail() {
@@ -483,6 +6,7 @@ async function initContentDetail() {
   let editingLinkId = null;
   let editingTestId = null;
   initImageLightbox();
+  initSyncButton();
 
   const tabChips = document.querySelectorAll('[data-tab]');
   const tabPanels = document.querySelectorAll('[data-tab-panel]');
@@ -497,6 +21,33 @@ async function initContentDetail() {
 
   qs('title').textContent = content.title;
   qs('status-badge').replaceWith(statusBadge(content.status));
+  qs('header-date').textContent = formatDate(content.publish_date);
+
+  if (content.video_type === 'short') {
+    const shortBadge = qs('header-short-badge');
+    shortBadge.classList.add('short');
+    shortBadge.style.display = '';
+  }
+
+  // Prefer the stored thumbnail_url (kept in sync by the YouTube sync); fall
+  // back to the YouTube CDN if it's missing, same maxres->hqdefault fallback
+  // the dashboard table uses.
+  const headerThumb = qs('header-thumb');
+  if (content.thumbnail_url) {
+    headerThumb.src = content.thumbnail_url;
+  } else if (content.video_id) {
+    headerThumb.src = `https://img.youtube.com/vi/${content.video_id}/maxresdefault.jpg`;
+    headerThumb.addEventListener(
+      'error',
+      () => {
+        headerThumb.onerror = null;
+        headerThumb.src = `https://img.youtube.com/vi/${content.video_id}/hqdefault.jpg`;
+      },
+      { once: true }
+    );
+  }
+  headerThumb.alt = content.title;
+  headerThumb.addEventListener('click', () => window.openImageLightbox(headerThumb.src, content.title));
 
   if (content.video_id) {
     const studioLink = qs('studio-link');
@@ -508,6 +59,12 @@ async function initContentDetail() {
     watchLink.href = content.source_url;
     watchLink.style.display = '';
   }
+
+  qs('changelog-heading').appendChild(
+    infoTip(
+      "Ariadne automatically detects when your video's title or thumbnail changes during each sync and logs it here. Use this tab to see the history of every change and — once YouTube Analytics is connected — whether each change improved your CTR."
+    )
+  );
 
   renderLinks(content.links);
   renderMessages(content.messages);
@@ -767,7 +324,7 @@ async function initContentDetail() {
         card.appendChild(notes);
       }
 
-      // Build the test variants title list 
+      // Build the test variants title list
       for (const variant of test.variants) {
         const row = document.createElement('div');
         row.className = 'test-variant';

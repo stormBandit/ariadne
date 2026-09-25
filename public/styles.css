@@ -27,17 +27,47 @@ body {
   padding: 16px;
 }
 
-header.top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 16px;
+.page-wide {
+  max-width: 1100px;
 }
 
-header.top h1 {
-  font-size: 20px;
-  margin: 0;
+.app-nav {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.nav-brand {
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.nav-links {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+}
+
+.nav-link {
+  color: var(--text-dim);
+  text-decoration: none;
+  font-size: 14px;
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+
+.nav-link:hover,
+.nav-link.active {
+  color: var(--text);
+  background: var(--surface);
 }
 
 a.button, button {
@@ -100,53 +130,163 @@ input, select, textarea {
   border-color: var(--accent);
 }
 
-.content-list {
-  margin: auto; 
+.table-scroll {
+  overflow-x: auto;
 }
 
-.card {
+.content-table {
+  width: 100%;
+  min-width: 480px;
+  border-collapse: collapse;
+}
+
+.content-table th {
+  text-align: left;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.content-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.content-table tr.content-row {
+  cursor: pointer;
+}
+
+.content-table tr.content-row:hover {
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 14px;
-  margin-bottom: 10px;
+}
+
+.content-table .col-thumb {
+  width: 120px;
+  min-width: 120px;
+}
+
+.content-table th:nth-child(2),
+.content-table td:nth-child(2) {
+  min-width: 220px;
+}
+
+.content-table .col-test {
+  width: 110px;
+  min-width: 110px;
+}
+
+.row-thumb img {
+  width: 120px;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 6px;
+  display: block;
+  background: var(--border);
+}
+
+.row-badges {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.row-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.row-date {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+.video-header {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.video-header-thumb {
+  width: 200px;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 8px;
+  background: var(--border);
+  cursor: zoom-in;
+}
+
+.video-header-info {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  text-decoration: none;
-  color: var(--text);
+  justify-content: center;
 }
 
-.card-top {
+.video-header-info h1 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.video-header-meta {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 20px;
-}
-
-.card h3 {
-  margin: 0 0 4px;
-  font-size: 16px;
-}
-
-.card .pub-date {
+  align-items: center;
+  gap: 10px;
   font-size: 13px;
   color: var(--text-dim);
 }
 
-.card .thumbnail {
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  border-radius: 8px;
-  overflow: hidden;
-  background: var(--border);
+.video-header-links {
+  display: flex;
+  gap: 6px;
 }
 
-.card .thumbnail img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
+.info-tip {
+  position: relative;
+  color: var(--text-dim);
+  cursor: help;
+  vertical-align: middle;
+  margin-left: 4px;
+  display: inline-flex;
+}
+
+.info-tip:hover {
+  color: var(--text);
+}
+
+.info-tip::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: normal;
+  /* Reset — an .info-tip can sit inside a .section h2 (uppercase, letter-spaced),
+     which would otherwise be inherited by this tooltip text. */
+  text-transform: none;
+  letter-spacing: normal;
+  line-height: 1.4;
+  padding: 8px 10px;
+  border-radius: 6px;
+  white-space: normal;
+  width: 220px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 20;
+}
+
+.info-tip:hover::after,
+.info-tip:focus-visible::after {
+  opacity: 1;
 }
 
 .badge {
@@ -166,6 +306,8 @@ input, select, textarea {
 .badge.title-test-progress { background: rgba(91,140,255,.15); color: var(--accent); }
 .badge.title-test-inconclusive { background: rgba(217,119,6,.2); color: var(--scheduled); }
 .badge.title-test-conclusive { background: rgba(22,163,74,.2); color: var(--live); }
+
+.badge.short { background: rgba(91,140,255,.15); color: var(--accent); }
 
 .badge.badge-icon {
   display: inline-flex;
@@ -238,9 +380,11 @@ form .field label {
 }
 
 .back-link {
+  display: inline-block;
   color: var(--text-dim);
   text-decoration: none;
   font-size: 14px;
+  margin-bottom: 20px;
 }
 
 .row .description {
@@ -474,4 +618,32 @@ button.danger {
   max-height: 90vh;
   border-radius: 8px;
   cursor: default;
+}
+
+/* UI Revamp — Follow-up: Responsive behaviour (PLAN.md). Breakpoint 768px.
+   `.page`/`.page-wide` need no override here — their max-width already
+   collapses to the viewport width naturally, and padding is already 16px
+   unconditionally. `.filters` (tab chips, dashboard type filter) already
+   wraps unconditionally too. The dashboard table intentionally does NOT
+   reflow here — see the `.table-scroll` wrapper above, added via
+   dashboard.js, which lets it scroll horizontally instead. */
+@media (max-width: 768px) {
+  .video-header {
+    flex-direction: column;
+  }
+
+  .video-header-thumb {
+    width: 100%;
+  }
+
+  .video-header-links,
+  .video-header-meta,
+  .variant-row,
+  #add-link-form,
+  #add-keyword-form,
+  #add-message-form > div,
+  #add-title-test-form > div:not(.variant-rows),
+  #add-thumbnail-test-form > div:not(.variant-rows) {
+    flex-wrap: wrap;
+  }
 }

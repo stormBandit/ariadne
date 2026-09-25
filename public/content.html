@@ -7,23 +7,43 @@
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
+  <nav class="app-nav">
+    <a class="nav-brand" href="/">Ariadne</a>
+    <!-- Nav links intentionally empty until Phase 3 adds CTR Health as a second page.
+         A nav link with only one destination adds noise without value. -->
+    <div class="nav-links">
+      <!-- Phase 3: <a class="nav-link" href="/ctr-health">CTR Health</a> -->
+    </div>
+    <button id="sync-youtube" class="secondary small">Sync</button>
+  </nav>
+
   <div class="page">
     <a class="back-link" href="/">&larr; Back to dashboard</a>
-    <header class="top">
-      <h1 id="title">Loading...</h1>
-      <span id="status-badge" class="badge draft">draft</span>
-    </header>
-    <div style="display: flex; gap: 6px; margin-bottom: 16px;">
-      <a id="studio-link" href="#" target="_blank" rel="noopener" class="button small secondary" style="display: none;">Go To Studio ↗</a>
-      <a id="watch-link" href="#" target="_blank" rel="noopener" class="button small secondary" style="display: none;">Go To Watch ↗</a>
+
+    <div class="video-header">
+      <img id="header-thumb" class="video-header-thumb" src="" alt="" />
+      <div class="video-header-info">
+        <h1 id="title">Loading...</h1>
+        <div class="video-header-meta">
+          <span id="header-date"></span>
+          <span id="status-badge" class="badge draft">draft</span>
+          <span id="header-short-badge" class="badge" style="display: none;">Short</span>
+        </div>
+        <div class="video-header-links">
+          <a id="studio-link" href="#" target="_blank" rel="noopener" class="button small secondary" style="display: none;">Go To Studio ↗</a>
+          <a id="watch-link" href="#" target="_blank" rel="noopener" class="button small secondary" style="display: none;">Go To Watch ↗</a>
+        </div>
+      </div>
     </div>
 
     <div class="filters">
-      <span class="chip active" data-tab="details">Video Details</span>
-      <span class="chip" data-tab="links">Links &amp; Messages</span>
+      <span class="chip active" data-tab="keywords">Keywords</span>
+      <span class="chip" data-tab="links-messages">Links & Messages</span>
+      <span class="chip" data-tab="testing">Testing</span>
+      <span class="chip" data-tab="changelog">Change History</span>
     </div>
 
-    <div data-tab-panel="details">
+    <div data-tab-panel="keywords">
       <div class="section">
         <h2>Keywords Targetted</h2>
         <div id="keyword-list"></div>
@@ -41,7 +61,40 @@
           <button type="submit" class="small">Add</button>
         </form>
       </div>
+    </div>
 
+    <div data-tab-panel="links-messages" style="display: none;">
+      <div class="section">
+        <h2>Links</h2>
+        <div id="link-list"></div>
+        <form id="add-link-form" style="display: flex; gap: 6px; margin-top: 16px;">
+          <select id="link-type" required>
+            <option value="creatorurls">CreatorURLs</option>
+            <option value="affiliate">Affiliate</option>
+            <option value="other">Other</option>
+          </select>
+          <input id="link-label" type="text" placeholder="Description (optional)" />
+          <input id="link-url" type="url" placeholder="https://..." required style="flex: 1;" />
+          <button type="submit" class="small">Add</button>
+        </form>
+        <div id="link-form-status" class="error-text"></div>
+      </div>
+
+      <div class="section">
+        <h2>Messages</h2>
+        <div id="message-list"></div>
+        <form id="add-message-form" style="display: flex; flex-direction: column; gap: 6px; margin-top: 8px;">
+          <div style="display: flex; gap: 6px;">
+            <input id="message-platform" type="text" placeholder="Platform (youtube...)" />
+            <input id="message-trigger" type="text" placeholder="Trigger word" />
+          </div>
+          <textarea id="message-body" placeholder="Message body" required rows="3"></textarea>
+          <button type="submit" class="small" style="align-self: flex-start;">Add</button>
+        </form>
+      </div>
+    </div>
+
+    <div data-tab-panel="testing" style="display: none;">
       <div class="section">
         <h2>Title Testing</h2>
         <div id="title-test-list"></div>
@@ -87,34 +140,10 @@
       </div>
     </div>
 
-    <div data-tab-panel="links" style="display: none;">
+    <div data-tab-panel="changelog" style="display: none;">
       <div class="section">
-        <h2>Links</h2>
-        <div id="link-list"></div>
-        <form id="add-link-form" style="display: flex; gap: 6px; margin-top: 16px;">
-          <select id="link-type" required>
-            <option value="creatorurls">CreatorURLs</option>
-            <option value="affiliate">Affiliate</option>
-            <option value="other">Other</option>
-          </select>
-          <input id="link-label" type="text" placeholder="Description (optional)" />
-          <input id="link-url" type="url" placeholder="https://..." required style="flex: 1;" />
-          <button type="submit" class="small">Add</button>
-        </form>
-        <div id="link-form-status" class="error-text"></div>
-      </div>
-
-      <div class="section">
-        <h2>Messages</h2>
-        <div id="message-list"></div>
-        <form id="add-message-form" style="display: flex; flex-direction: column; gap: 6px; margin-top: 8px;">
-          <div style="display: flex; gap: 6px;">
-            <input id="message-platform" type="text" placeholder="Platform (youtube...)" />
-            <input id="message-trigger" type="text" placeholder="Trigger word" />
-          </div>
-          <textarea id="message-body" placeholder="Message body" required rows="3"></textarea>
-          <button type="submit" class="small" style="align-self: flex-start;">Add</button>
-        </form>
+        <h2 id="changelog-heading">Change History</h2>
+        <div class="empty-state">Changes to your live title and thumbnail are being tracked automatically. History will appear here.</div>
       </div>
     </div>
 
@@ -134,7 +163,8 @@
     <img id="image-lightbox-img" class="image-lightbox-img" src="" alt="" />
   </div>
 
-  <script src="/app.js"></script>
+  <script src="/utils.js"></script>
+  <script src="/content.js"></script>
   <script>initContentDetail();</script>
 </body>
 </html>

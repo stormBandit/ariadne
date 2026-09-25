@@ -2,36 +2,43 @@
 
 ## Current Status
 
-Last updated: 2026-09-23 (commits `12781e8`, `08b18d1` pushed to origin/main)
-Completed: Core workflow (YouTube sync, dashboard/detail, links, DM messages, keywords, A/B tests). Auto-Changelog
-Steps 1-3: `content_changelog` table + `youtube_videos.thumbnail_url` column, sync logic diffs title/thumbnail
-(including the reclassify fix covering *all* stored videos, not just the last 10) and logs changes atomically.
-Test coverage added (12 tests in `youtube.test.ts`, up from 5; 40 total, up from 33) plus
-`@vitest/coverage-istanbul` + `npm run test:coverage` to track it going forward — baseline
-94.2%/84.37%/88.23%/95.89% (stmts/branch/funcs/lines); currently 94.14%/86.07%/89.18%/96.41%, effectively flat
-(the 0.06pp stmt dip is pre-existing untested error branches, not new code). Also: removed `'openinapp'` from
-the Add-link dropdown (`content.html`) so no new OpenInApp links can be created — see "What changed" for the
-full OpenInApp cleanup detail.
+Last updated: 2026-09-23 (commits `12781e8`, `08b18d1`, `b48eba4` pushed to origin/main; UI Revamp below is
+uncommitted)
+Completed: Core workflow. Auto-Changelog Steps 1-3 (schema, sync diffing incl. the all-videos reclassify fix,
+tests). OpenInApp removed from the Add-link UI. Test coverage tracked via `@vitest/coverage-istanbul` — baseline
+94.2%/84.37%/88.23%/95.89%, currently 94.14%/86.07%/89.18%/96.41% (flat; the 0.06pp stmt dip predates this
+work). Full details on all of the above are further down in this file and in "What changed."
 
-**Scope fix (caught by Dalton before it shipped as a latent bug):** the first version of Step 2 only diffed
-videos returned by the "recent uploads" fetch (last 10), so an edit to an older video's title/thumbnail would
-never be detected — that video never re-enters the "recent" window. Fixed by extending `reclassifyExisting`
-(which already loops over every stored video each sync, for status/type/URL reclassification) to also request
-`part=snippet` on its existing `videos.list` call and diff title/thumbnail there — same number of API requests,
-richer response, now covers every stored video, not just the last 10. Ran the real sync once locally against
-all 100 previously-stored videos as a result: 99 thumbnail backfills + 4 title corrections logged, 1 video
-skipped (YouTube API returns no maxres/high thumbnail for it — correctly left alone rather than overwritten
-with nothing; that video (`n0X_0AavGuE`) turned out to be deleted/private on YouTube's side entirely — API
-returns zero items for it — and was deleted from local D1 at Dalton's request).
-In progress: Auto-Changelog Step 4 (Change History UI) is intentionally deferred pending the UI revamp — do not
-build it yet, see "What the plan says about Auto-Changelog's UI" note below for the exact wording.
+**UI Revamp — done, per the planner agent's spec in "Auto-Changelog — Build substeps" → "UI Revamp"
+(uncommitted), plus two follow-up rounds (responsive layer, tab merge + infoTip fix — both also uncommitted).**
+Dashboard is now a table (thumbnail/title+date/status/test columns, 1100px wide, with a status badge above the
+title rather than its own column per Dalton's call, 2026-09-23; the plan's earlier "remove status entirely"
+language has been withdrawn — that decision is deferred, not settled either way). Detail page has a persistent
+video header (thumbnail from
+`thumbnail_url` w/ CDN fallback, title, date, status + Shorts badges, Studio/Watch links) above 4 tabs
+(Keywords / Links & Messages / Testing / Change History — Links and Messages were merged into one panel in a
+follow-up; the last tab is a placeholder, not wired to `content_changelog` data yet, but its `infoTip()` now
+uses a working CSS `::after` tooltip instead of the original broken native-`title` version). Responsive layer
+added for <768px (table scrolls horizontally via a JS-injected wrapper, video header stacks, forms wrap). Nav
+bar has no page links (single-page app right now — a Phase 3 CTR Health link is commented in for later). Shared
+sticky nav bar with a Sync button on both pages. `app.js` split into `utils.js` (shared helpers + new
+`infoTip()`), `dashboard.js`, `content.js` — no duplicate function definitions. Fixed a gap the spec didn't call
+out: the nav's Sync button needed wiring on both pages, not just the dashboard (`initSyncButton()` in
+`utils.js`). No backend/schema changes across any of this. **Not visually verified** — no
+`chromium-cli`/`playwright` available in this environment; verified instead via
+`node --check`, a full `qs()`-id-vs-HTML audit (zero mismatches), tab-key matching, and the full backend suite
+(40/40, untouched). Full done-check is in the "Done-check for this phase" list under UI Revamp — recommend an
+actual visual pass before calling this fully shipped.
+In progress: Auto-Changelog Step 4 (the real Change History list, wired to `content_changelog` data) can now
+be built on top of the new placeholder tab — no longer blocked on "no UI revamp," since that's done. Not
+started yet.
 Blocked on: remote D1 migration (`thumbnail_url` column + `content_changelog` table) — wrangler isn't
 authenticated in the Claude Code environment (`Failed to fetch auth token`), needs Dalton to run `wrangler login`
 or provide a `CLOUDFLARE_API_TOKEN` first. Commands are under "Development" below; local D1 is already migrated
 and backfilled.
-Next: once remote D1 auth is sorted, run the migration there. Local OpenInApp UI cleanup is done (see "What
-changed"); the `links.type = 'openinapp'` value itself is intentionally left alone on existing rows (25 of them
-locally) — additive-changes rule, don't rewrite historical data without being told to.
+Next: commit the UI Revamp work (currently uncommitted, sitting in the working tree) once Dalton has a chance
+to actually look at it in a browser. Then: remote D1 migration (needs Dalton), or start Step 4's real
+implementation now that the UI has a home for it.
 
 _This file is the shared plan between Claude Code (this repo) and the Cowork planning agent. See "Sync
 convention" below for who owns which section. "What changed since the original plan" is the decision log._
@@ -365,12 +372,279 @@ What to build when the time comes (for reference, not for now):
 - Empty state: "No changes detected yet — changes to your live title or thumbnail will appear here
   automatically after the next sync."
 
-### UI Revamp (planning item — scope TBD)
+### UI Revamp
 
-The dashboard and detail page are accumulating features and becoming cluttered. Before the changelog UI
-(Step 4) and any further Phase 3 features are added, the overall layout needs a rethink. This will be
-planned separately with design input. Do not add new UI sections to the existing pages until the revamp
-direction is set.
+Full redesign of both pages. Direction: dark (keep existing colour tokens), wider, YouTube Studio-inspired
+table dashboard, tabbed detail page. Do not change any backend code, API endpoints, or schema during this
+phase — HTML/CSS/JS only.
+
+---
+
+**Goals**
+
+- Dashboard: replace full-width thumbnail cards with a compact table so more videos are visible at once
+- Detail page: replace 2 coarse tabs with 5 focused tabs + a persistent video header
+- Global nav: unified header bar across both pages so navigation is consistent
+- app.js: split into three files to keep things manageable as the codebase grows
+
+---
+
+**File changes**
+
+| File | What changes |
+|---|---|
+| `styles.css` | New classes for nav bar, table rows, video header, expanded tabs |
+| `index.html` | Table markup, link to shared nav, remove per-page header |
+| `content.html` | Video header section, 5-tab structure, link to shared nav |
+| `public/app.js` | Rename to `public/utils.js` — shared helpers only (api(), qs(), formatDate(), statusBadge(), titleTestBadge(), iconBadge(), infoTip()) |
+| `public/dashboard.js` | initDashboard() and all dashboard-specific render logic |
+| `public/content.js` | initContentDetail() and all detail-page-specific render logic |
+
+`index.html` loads `utils.js` then `dashboard.js`. `content.html` loads `utils.js` then `content.js`.
+
+---
+
+**Global nav bar**
+
+Shared markup (inline in each HTML file, not a separate include — no build step):
+
+```html
+<nav class="app-nav">
+  <a class="nav-brand" href="/">Ariadne</a>
+  <!-- Nav links intentionally empty until Phase 3 adds CTR Health as a second page.
+       A nav link with only one destination adds noise without value. -->
+  <div class="nav-links">
+    <!-- Phase 3: <a class="nav-link" href="/ctr-health">CTR Health</a> -->
+  </div>
+  <button id="sync-youtube" class="secondary small">Sync</button>
+</nav>
+```
+
+The Sync button lives in the nav so it's always accessible. Remove the per-page `<header class="top">` from
+both HTML files — the nav replaces it. On the detail page, the Sync button can be hidden (syncing from a
+detail page is unintuitive) — add `style="display:none"` to it in `content.html`.
+
+New CSS:
+```css
+.app-nav {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.nav-brand { font-weight: 600; font-size: 16px; color: var(--text); text-decoration: none; }
+.nav-links { display: flex; gap: 4px; flex: 1; }
+.nav-link { color: var(--text-dim); text-decoration: none; font-size: 14px; padding: 6px 10px; border-radius: 6px; }
+.nav-link:hover, .nav-link.active { color: var(--text); background: var(--surface); }
+```
+
+---
+
+**Dashboard — table layout**
+
+Max-width: `1200px` for the dashboard, `960px` for the detail page. Update `.page` to use the appropriate
+value per page, or use a modifier class (`.page--wide` on `index.html`, `.page--detail` on `content.html`).
+The current `720px` was set for a single-column mobile layout and is too narrow for a desktop dashboard tool.
+Replace `.content-list` card rendering with a `<table>`.
+
+Columns:
+
+| Column | Width | Content |
+|---|---|---|
+| Thumbnail | 120px | 16:9 image, links to detail page |
+| Title | flex | Video title (bold) + publish date below in `--text-dim` |
+| Test | 110px | title-test badge (none/in progress/inconclusive/conclusive) |
+
+Status badge: kept for now (Dalton's call, 2026-09-23) — revisit later whether it's worth showing given the
+YouTube Data API v3 (no OAuth) only returns public published videos, so it currently reads "live" for nearly
+every row. Not a settled decision either way.
+
+No Studio/Watch links in the table — those move to the detail page header. Keep search + chip filter above
+the table. Table header row with column labels.
+
+New CSS needed: `.content-table`, `.content-table th`, `.content-table td`, `.content-table tr:hover`,
+`.row-thumb` (the small thumbnail cell). Remove or repurpose `.card`, `.card-top`, `.card .thumbnail`
+since those classes are no longer used by the dashboard.
+
+---
+
+**Detail page — video header + 5 tabs**
+
+**Video header** (always visible, above the tabs):
+
+```
+[ thumbnail 200px ]  Title of the video
+                     Published: Jan 1 2025  •  [Shorts badge if applicable]
+                     [Go To Studio ↗]  [Go To Watch ↗]
+```
+
+Status badge: kept for now, same open question as the dashboard table above. Shorts badge is kept since
+that's derived from `video_type` which is set by the sync and is accurate.
+
+The thumbnail here comes from `youtube_videos.thumbnail_url` (now stored after Step 1). Fall back to the
+YouTube CDN URL if null. Clicking the thumbnail opens the lightbox (existing behaviour, already in app.js).
+
+New CSS: `.video-header`, `.video-header-thumb`, `.video-header-info`.
+
+**Tab structure** — 4 tabs:
+
+```
+[ Keywords ]  [ Links & Messages ]  [ Testing ]  [ Change History ]
+```
+
+Tab panel mapping:
+
+| Tab | Content |
+|---|---|
+| Keywords | Keywords section (add/remove, score, volume tier) |
+| Links & Messages | Links section on top, Messages (DM automations) section below — same panel, no sub-tabs |
+| Testing | Title Testing section + Thumbnail Testing section |
+| Change History | Placeholder state for now — see below |
+
+The Change History tab shows a placeholder until Step 4 (the actual history list) is built. The placeholder
+should be an empty state with an explanation of what the tab does, not just a blank panel.
+
+**Default tab on load:** Keywords.
+
+---
+
+**infoTip() helper**
+
+Add to `utils.js`. Must use a CSS tooltip — NOT the native `title` attribute, which is slow, inconsistent
+across browsers, and invisible on mobile.
+
+```js
+function infoTip(text) {
+  const wrap = document.createElement('span');
+  wrap.className = 'info-tip';
+  wrap.setAttribute('aria-label', text);
+  wrap.setAttribute('role', 'tooltip');
+  wrap.dataset.tip = text;
+  wrap.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+    <circle cx="7" cy="7" r="6.5" stroke="currentColor"/>
+    <text x="7" y="11" text-anchor="middle" font-size="9" fill="currentColor">i</text>
+  </svg>`;
+  return wrap;
+}
+```
+
+CSS — the tooltip text comes from `data-tip` via a `::after` pseudo-element so no extra DOM is needed:
+```css
+.info-tip {
+  position: relative;
+  color: var(--text-dim);
+  cursor: help;
+  vertical-align: middle;
+  margin-left: 4px;
+  display: inline-flex;
+}
+.info-tip:hover { color: var(--text); }
+.info-tip::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: normal;
+  line-height: 1.4;
+  padding: 8px 10px;
+  border-radius: 6px;
+  white-space: normal;
+  width: 220px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 20;
+}
+.info-tip:hover::after { opacity: 1; }
+```
+
+**Change History infoTip text:**
+"Ariadne automatically detects when your video's title or thumbnail changes during each sync and logs it here.
+Use this tab to see the history of every change and — once YouTube Analytics is connected — whether each
+change improved your CTR."
+
+Wire to the Change History tab header. Wire to any Phase 3 metrics section that needs interpretation context
+(see "UI: Contextual Tips" section).
+
+---
+
+**Done-check for this phase (DONE, 2026-09-23)**
+
+- [x] Both pages use the shared nav bar; old per-page headers removed
+- [x] Dashboard renders as a table with thumbnail, title+date, status, test columns
+- [x] Detail page shows video header (thumbnail, title, status, date, Studio/Watch links) above tabs — plus
+      the Shorts badge from the ASCII mockup, which the prose spec omitted but the mockup showed
+- [x] ~~Detail page has 5 tabs~~ **Superseded, 2026-09-23: now 4 tabs.** Links and Messages merged into one
+      "Links & Messages" panel (Links section on top, Messages below, no sub-tabs) per the plan's revised spec.
+      Tab keys are `keywords` / `links-messages` / `testing` / `changelog`; tab-switching JS in `content.js` is
+      generic (matches `[data-tab]` to `[data-tab-panel]` by value) so it needed no changes, only the markup.
+- [x] `app.js` split into `utils.js`, `dashboard.js`, `content.js`; no duplicate function definitions (verified
+      by diffing top-level function names across all three files)
+- [x] `infoTip()` helper exists in `utils.js`; wired to the Change History section header. **Fixed, 2026-09-23:**
+      the first version used the native `title` attribute (slow, inconsistent, invisible on mobile) — replaced
+      with the `data-tip` + `.info-tip::after` CSS tooltip from the plan's revised spec, and updated the wired
+      text to the exact "Ariadne automatically detects..." copy specified there.
+- [x] No backend changes (confirmed via `git status`: only `public/*` and `PLAN.md` touched)
+
+Also fixed a gap the original spec didn't cover: the shared nav's Sync button is now wired on both pages via a
+new `initSyncButton()` helper in `utils.js` (previously only `dashboard.js` had sync logic — the button would
+have silently done nothing on the detail page).
+
+Verification note: no browser automation tooling (`chromium-cli`, `playwright`) was available in the Claude
+Code environment, so this wasn't visually screenshotted. Verified instead via `node --check` on all three JS
+files, a full audit cross-referencing every `qs()` id against the HTML (zero mismatches), tab chip/panel key
+matching, a live HTTP fetch confirming the running `wrangler dev` serves the new files, and the full backend
+suite (40/40 passing, untouched). Recommend an actual visual pass before calling this fully shipped.
+
+### UI Revamp — Follow-up: Responsive behaviour (DONE, 2026-09-23)
+
+The revamp shipped targeting desktop widths. Everything must also degrade gracefully on mobile.
+Breakpoint: `768px`. Apply these in a follow-up pass — do not redo the revamp, just add the responsive layer.
+
+Implemented as CSS-only in `styles.css`, plus one JS-side DOM wrap in `dashboard.js` (the explicitly-permitted
+exception, since `index.html`'s `<table>` markup is static and the scroll wrapper needs to sit around it — no
+`content.html`/`index.html` edits were made; the wrapper is injected at runtime instead). No backend or
+JS-logic changes.
+
+- `.page`/`.page-wide` mobile row needed no new CSS: `max-width` already collapses to the viewport on its own,
+  and padding was already `16px` unconditionally. Left desktop max-widths (720px / 1100px) unchanged — the
+  table's "1200px / 960px" desktop column reads as documentation of intended values, not an instruction to
+  widen the existing revamp, and the ask was explicitly to add the responsive layer, not redo it. Flag if that
+  reading's wrong and an actual desktop-width bump was intended.
+- Dashboard table: wrapped in `.table-scroll` (`overflow-x: auto`) via `dashboard.js`; `.content-table` and its
+  thumbnail/title/test columns got explicit `min-width`s (480px table-wide minimum) so scroll kicks in on
+  typical phone widths instead of columns squeezing.
+- Detail video header: `flex-direction: column` + full-width thumbnail under 768px.
+- Tabs: already `flex-wrap: wrap` unconditionally (pre-existing `.filters` rule) — no change needed.
+- Forms: `flex-wrap: wrap` added under 768px for the five add-forms' flex rows (link, keyword, message,
+  title-test, thumbnail-test — the last two scoped with `:not(.variant-rows)` so the vertical variant-list
+  container isn't affected), plus `.variant-row`, `.video-header-links`, and `.video-header-meta`.
+
+Verification: `node --check` on `dashboard.js`, confirmed all targeted selectors exist in `content.html`, full
+backend suite still 40/40. Same caveat as the rest of the UI Revamp — no `chromium-cli`/`playwright` in this
+environment, so not visually confirmed at 768px in an actual browser/device-emulator view.
+
+| Element | Desktop | Mobile (< 768px) |
+|---|---|---|
+| `.page` max-width | 1200px / 960px | 100%, 16px side padding |
+| Nav bar | brand left, sync right | same — stays single row |
+| Dashboard table | full 4-column table | `overflow-x: auto` wrapper — table scrolls horizontally rather than reflowing to cards. This is a desktop-first tool; horizontal scroll on mobile is acceptable. |
+| Detail video header | thumbnail left, info right (flex row) | stacked (flex column), thumbnail full width |
+| Detail tabs | horizontal chip row | `flex-wrap: wrap` so chips wrap to a second row |
+| Forms | inline flex rows | `flex-wrap: wrap` so inputs stack rather than overflow |
+
+Use `min-width` on table columns so horizontal scroll kicks in cleanly. Don't hide columns on mobile —
+if data is shown on desktop it should be accessible on mobile too, even if it requires scrolling.
 
 ---
 
@@ -412,6 +686,18 @@ Phase 3 requires OAuth (YouTube Analytics API, read-only). The existing YouTube 
   This is the multi-tenant equivalent of the one-off local backfill Claude Code ran manually during
   single-tenant development (2026-09-23) — in the live product it needs to be an automatic part of onboarding,
   not a manual step.
+- **`youtube_videos.status = 'scheduled'` needs OAuth too — it's currently dead.** Confirmed 2026-09-23: a
+  video Dalton had scheduled (not yet public) on YouTube did not appear in Ariadne at all. Checked directly
+  against the real API — `playlistItems.list` (the uploads-playlist sync) only ever returns `public` items when
+  called with an API key; a scheduled/private video is entirely invisible to it, same restriction that made
+  `videos.list` return zero items for the deleted `n0X_0AavGuE` earlier this session. Separately, even for
+  videos Ariadne *can* see, `src/youtube.ts` never writes `status = 'scheduled'` — `fetchVideoDetails` only ever
+  maps to `'live'` (`privacyStatus === 'public'`) or `'draft'` (anything else visible, e.g. unlisted); the
+  schema's third status value has never been wired to any code path. Once OAuth exists, this needs: (1) the
+  scheduled video to actually become visible to the sync, and (2) the sync to map a private video with a
+  `publishAt` date to `'scheduled'` instead of `'draft'`. Until then, the dashboard's status badge is honest
+  about what it can currently detect, not about a video's real YouTube state — Dalton's call (2026-09-23): keep
+  showing it anyway, low-cost even though it'll read `live` for nearly everything until OAuth lands.
 
 ---
 
