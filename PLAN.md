@@ -2,15 +2,24 @@
 
 ## Current Status
 
-Last updated: 2026-09-23 (commits `12781e8`, `08b18d1`, `b48eba4` pushed to origin/main; UI Revamp below is
-uncommitted)
+Last updated: 2026-09-29 (commits `12781e8`, `08b18d1`, `b48eba4` pushed to origin/main; UI Revamp committed
+as `1f53838` and dependency fix as `98984c5` — both local, not yet pushed)
 Completed: Core workflow. Auto-Changelog Steps 1-3 (schema, sync diffing incl. the all-videos reclassify fix,
 tests). OpenInApp removed from the Add-link UI. Test coverage tracked via `@vitest/coverage-istanbul` — baseline
 94.2%/84.37%/88.23%/95.89%, currently 94.14%/86.07%/89.18%/96.41% (flat; the 0.06pp stmt dip predates this
 work). Full details on all of the above are further down in this file and in "What changed."
 
-**UI Revamp — done, per the planner agent's spec in "Auto-Changelog — Build substeps" → "UI Revamp"
-(uncommitted), plus two follow-up rounds (responsive layer, tab merge + infoTip fix — both also uncommitted).**
+**Dependencies (2026-09-29):** production `npm audit --omit=dev` is clean — `hono` bumped to 4.13.11 within
+its existing `^4.6.0` range (lockfile-only change, `98984c5`). Remaining advisories (`ws`, `undici`, `sharp`,
+`esbuild`, `@vitest/mocker`) are dev-only (wrangler/miniflare/vitest; never shipped in the Worker) and are
+accepted for now. **Do not run `npm audit fix --force`:** it pulls vitest 5, which no
+`@cloudflare/vitest-pool-workers` release supports, and breaks `npm install` with ERESOLVE. Clearing the
+dev-only advisories properly is its own migration (vitest 4.1 + pool-workers 0.22 + wrangler 4 +
+workers-types v5, new `cloudflareTest` config, and rewriting `youtube.test.ts` off `fetchMock`, which 0.22
+removed); even then 0.22 pins a wrangler version audit still flags. Not scheduled.
+
+**UI Revamp — done and committed (`1f53838`), per the planner agent's spec in "Auto-Changelog — Build
+substeps" → "UI Revamp", plus two follow-up rounds (responsive layer, tab merge + infoTip fix).**
 Dashboard is now a table (thumbnail/title+date/status/test columns, 1100px wide, with a status badge above the
 title rather than its own column per Dalton's call, 2026-09-23; the plan's earlier "remove status entirely"
 language has been withdrawn — that decision is deferred, not settled either way). Detail page has a persistent
@@ -36,9 +45,10 @@ Blocked on: remote D1 migration (`thumbnail_url` column + `content_changelog` ta
 authenticated in the Claude Code environment (`Failed to fetch auth token`), needs Dalton to run `wrangler login`
 or provide a `CLOUDFLARE_API_TOKEN` first. Commands are under "Development" below; local D1 is already migrated
 and backfilled.
-Next: commit the UI Revamp work (currently uncommitted, sitting in the working tree) once Dalton has a chance
-to actually look at it in a browser. Then: remote D1 migration (needs Dalton), or start Step 4's real
-implementation now that the UI has a home for it.
+Next: remote D1 migration first (needs Dalton's wrangler auth) so Step 4 doesn't ship a tab that errors in
+production for lack of the `content_changelog` table; then Auto-Changelog Step 4. The "no internet" warning
+in "Nice to Haves" could ride along with Step 4 — options to be proposed to Dalton before building. A visual
+browser pass on the UI Revamp is still outstanding.
 
 _This file is the shared plan between Claude Code (this repo) and the Cowork planning agent. See "Sync
 convention" below for who owns which section. "What changed since the original plan" is the decision log._
@@ -277,6 +287,13 @@ No Chart.js, no external chart library — badges and status indicators are plai
 `POST /api/generate-message` (Gemini DM generation) has been moved to the wishlist — not a current priority.
 
 ---
+
+## Nice to Haves (if they're easy wins, implement them during a phase of work, if not easy wins lets discuss when we have free cycles)
+
+1. I would like to warn a user when their internet connection has cut out or they don't have internet to begin with
+Right now, if the user tries to sync they simply see "Sync failed: internal error; reference =" and that's completely meaningless
+to a normal user. It would be nice to have a display come up as soon as possible (let me know what those options would be) to say
+"It looks like you aren't connected to the internet" or just a symbol for no internet.
 
 ## Auto-Changelog — Build substeps
 
