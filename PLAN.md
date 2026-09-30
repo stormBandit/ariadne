@@ -41,14 +41,21 @@ actual visual pass before calling this fully shipped.
 In progress: Auto-Changelog Step 4 (the real Change History list, wired to `content_changelog` data) can now
 be built on top of the new placeholder tab — no longer blocked on "no UI revamp," since that's done. Not
 started yet.
-Blocked on: remote D1 migration (`thumbnail_url` column + `content_changelog` table) — wrangler isn't
-authenticated in the Claude Code environment (`Failed to fetch auth token`), needs Dalton to run `wrangler login`
-or provide a `CLOUDFLARE_API_TOKEN` first. Commands are under "Development" below; local D1 is already migrated
-and backfilled.
-Next: remote D1 migration first (needs Dalton's wrangler auth) so Step 4 doesn't ship a tab that errors in
-production for lack of the `content_changelog` table; then Auto-Changelog Step 4. The "no internet" warning
-in "Nice to Haves" could ride along with Step 4 — options to be proposed to Dalton before building. A visual
-browser pass on the UI Revamp is still outstanding.
+**Local-first (Dalton, 2026-09-30):** the project is being built and verified locally only (local D1,
+`npm run dev`, `npm test`) until Dalton decides to go live. Prod is out of scope — the remote D1 migration is
+no longer a blocker. For the record: an old deploy of the `ariadne` Worker exists, and remote D1 is still on
+the original scaffold schema (`content`/`links`/`messages` only, 38 synced rows, links/messages empty), so a
+fresh reprovision from `schema.sql` will be needed at go-live, not an incremental migration.
+Blocked on: nothing.
+Next: Dalton to confirm the Commercialization phase order (C1–C5 below). Then either C1 (multi-tenancy
+foundation) or Auto-Changelog Step 4, depending on that order. The "no internet" warning in "Nice to Haves"
+could ride along with whichever frontend work comes first — options to be proposed to Dalton before building.
+A visual browser pass on the UI Revamp is still outstanding.
+
+**Direction change (2026-09-29):** Ariadne is shifting from a single-channel tool to a paid product for other
+creators. The initial build stays $0. The OAuth restriction was removed from `CLAUDE.md`. Competitive research and
+a phased commercialization plan are in the new "Commercialization" section below (nothing built yet). Next
+decision for Dalton: confirm the phase order there.
 
 _This file is the shared plan between Claude Code (this repo) and the Cowork planning agent. See "Sync
 convention" below for who owns which section. "What changed since the original plan" is the decision log._
@@ -680,6 +687,71 @@ organic change history.
 
 ---
 
+## Commercialization (added 2026-09-29 — planning only, nothing built)
+
+**Goal:** turn Ariadne into a paid product for other YouTube creators. **The initial build stays $0** (free tiers
+only). Payment processing fees arrive only with paying customers.
+
+### Positioning
+
+Ariadne is the **system of record for what you changed and what it did**, not another test runner. YouTube's
+native Test & Compare now gives every Partner Program creator free thumbnail and title tests, and TubeBuddy,
+vidIQ and ThumbnailTest already sell testing or optimization. No competitor found (in a web search, not a deep
+audit) combines: auto-detected title/thumbnail change history, CTR before/after, CTR health ranking by missed
+clicks, and a per-video knowledge base that also holds results from native and third-party tests.
+
+### Competitive landscape (approximate prices, from third-party comparison sites — verify before relying on them)
+
+| Category | Players | Notes |
+|---|---|---|
+| Optimization suites | TubeBuddy (~$3–$49/mo; Legend ~$23/mo annual), vidIQ (free to ~$39/mo; coaching ~$99/mo) | Keywords, SEO, bulk edits, AI ideas. TubeBuddy also runs A/B tests. |
+| Dedicated testing | ThumbnailTest ($32 / $44 / $75 per mo; top plan adds 10 channels, API, Zapier, 3 seats) | Thumbnail split testing |
+| Native | YouTube Test & Compare (free) | Thumbnails and titles, judged on watch time per impression; excludes kids, mature and live |
+| Pipeline / sponsor templates | Notion and Gumroad "Creator OS" kits, Taskade kits | Idea-to-publish pipeline, editorial calendar, sponsor CRM |
+| DM automation | ManyChat, WilloSend and others | Per-contact pricing is a common complaint |
+| Reporting | DashThis (~$44+/mo), Hootsuite, Planable | Client-ready dashboards, scheduling |
+
+### Feature ideas (ranked by fit for a paid product)
+
+1. Test history import and fast logging for YouTube-native and third-party tests, rolled up into "what wins on my channel"
+2. CTR Health ranked by missed clicks (already planned in Phase 3) — the headline page
+3. Learnings and pattern library: tag each test or change with a reason and outcome (manual first, AI-assisted in Phase 4)
+4. Per-video sponsor and affiliate link tracking
+5. Team roles (editor, thumbnail designer) and "ready to change" approval states
+6. Weekly digest email: videos that crossed the 2-week/500-impression threshold, wins and losses
+7. DM message library only — do not compete with ManyChat on automation
+8. Multi-channel support (competitors gate this behind their top tier — natural upsell)
+
+### Suggested phase order (Dalton to confirm)
+
+| Phase | Scope | Cost |
+|---|---|---|
+| C1 | Multi-tenancy foundation: `user_id` on all tables, `WHERE user_id = ?` in every query, no hardcoded channel IDs | $0 |
+| C2 | Sign-in (Google OAuth) plus YouTube Analytics OAuth (read-only), first-login backfill. Submit Google OAuth verification early. | $0 |
+| C3 | CTR Health, Change History UI (Step 4), test history import | $0 |
+| C4 | Billing (Stripe), plans and free tier, usage limits | Stripe fees only when customers pay |
+| C5 | Team seats, digest email, multi-channel | Email provider free tier to start |
+
+C2 supersedes the "Phase 3" OAuth items in the Roadmap below; the existing Phase 3 content is still the spec for
+what to build there.
+
+### Risks and open questions
+
+- **OAuth verification:** all YouTube scopes are classified sensitive. Until Google verifies the app, users outside
+  the test group see an "unverified app" warning. Approval time is unknown; start early.
+- **Shared quota:** Data API v3 is 10,000 units/day per Google Cloud project, not per user. Analytics quota is
+  tracked separately. See "Pre-Launch Investigative Requirements."
+- **Data isolation:** shared D1 with a `user_id` column is the $0 route, but every query must filter it. Add tests
+  that assert one user cannot read another's rows.
+- **Native test results:** the plan already notes the API doesn't expose native Test & Compare results, so import
+  is manual entry (or screenshot upload) unless that changes. Verify this again before building.
+- **Pricing:** creators already pay roughly $20–$45/mo for comparable tools. A free tier for one channel plus a
+  ~$15–$29/mo paid tier and ~$49–$79/mo multi-channel/team tier is a starting hypothesis, not a decision.
+- **Hosting limits:** check Workers and D1 free-tier limits against expected per-customer usage before launch,
+  since the $0 build will not stay $0 at scale.
+
+---
+
 ## Roadmap
 
 ### Phase 3 — Analytics & Intelligence
@@ -919,8 +991,8 @@ npx wrangler d1 execute ariadne --remote --command "ALTER TABLE youtube_videos A
 
 ## Working conventions (from `CLAUDE.md`, kept here for reference)
 
-- $0-cost target — flag any dependency that isn't free-tier or free outright.
-- Avoid OAuth until Phase 3 — everything before that uses API keys as Wrangler secrets. OAuth returns in Phase 3 for YouTube Analytics.
+- $0-cost target for the initial build — flag any dependency that isn't free-tier or free outright. Costs that come with paying customers (payment fees) are expected in the Commercialization phases.
+- OAuth is allowed where the roadmap calls for it (YouTube Analytics, and sign-in once multi-tenancy lands). The earlier "avoid OAuth outside a planned phase" rule was removed from `CLAUDE.md` on 2026-09-29. Existing sync still uses an API key as a Wrangler secret.
 - No CDN chart libraries — inline SVG only.
 - Additive changes — extend existing tables/files rather than renaming/replacing without being told to.
 - External API failures return clear JSON errors, matching the `/api/sync/youtube` pattern.
