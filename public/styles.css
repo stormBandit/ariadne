@@ -175,8 +175,8 @@ input, select, textarea {
 }
 
 .content-table .col-test {
-  width: 110px;
-  min-width: 110px;
+  width: 130px;
+  min-width: 130px;
 }
 
 .row-thumb img {
@@ -302,10 +302,59 @@ input, select, textarea {
 .badge.scheduled { background: rgba(217,119,6,.2); color: var(--scheduled); }
 .badge.live { background: rgba(22,163,74,.2); color: var(--live); }
 
-.badge.title-test-none { background: rgba(107,114,128,.2); color: var(--draft); }
-.badge.title-test-progress { background: rgba(91,140,255,.15); color: var(--accent); }
-.badge.title-test-inconclusive { background: rgba(217,119,6,.2); color: var(--scheduled); }
-.badge.title-test-conclusive { background: rgba(22,163,74,.2); color: var(--live); }
+/* Test-status badges (title and thumbnail share colors; the icon + label
+   distinguish the type) */
+.badge.test-none { background: rgba(107,114,128,.2); color: var(--draft); }
+.badge.test-progress { background: rgba(91,140,255,.15); color: var(--accent); }
+.badge.test-inconclusive { background: rgba(217,119,6,.2); color: var(--scheduled); }
+.badge.test-conclusive { background: rgba(22,163,74,.2); color: var(--live); }
+
+.test-tooltip {
+  display: none;
+  position: fixed;
+  z-index: 1000;
+  max-width: 320px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.45);
+  font-size: 13px;
+  color: var(--text);
+  user-select: text;
+}
+/* Invisible bridges over the gap between badge and popup so the cursor stays
+   "inside" the popup while travelling to it from either side. */
+.test-tooltip::before,
+.test-tooltip::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 10px;
+}
+.test-tooltip::before { top: -10px; }
+.test-tooltip::after { bottom: -10px; }
+.test-tooltip-head { font-weight: 600; margin-bottom: 4px; }
+.test-tooltip-dates { color: var(--text-dim); font-size: 12px; margin-bottom: 4px; }
+.test-tooltip-notes { color: var(--text-dim); font-size: 12px; margin-bottom: 6px; }
+.test-tooltip-variant {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+  border-top: 1px solid var(--border);
+}
+.test-tooltip-variant img { width: 96px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 4px; }
+.test-tooltip-variant .share { color: var(--text-dim); white-space: nowrap; }
+
+.test-badges {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
 
 .badge.short { background: rgba(91,140,255,.15); color: var(--accent); }
 

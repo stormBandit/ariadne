@@ -164,6 +164,30 @@ describe('content endpoints', () => {
     expect(byId[concluded.video_id].title_test_end_date).toBe('2026-07-10');
   });
 
+  it('reports thumbnail test status separately from title test status', async () => {
+    const both = await createContent({ video_id: 'both', title: 'Both' });
+    const post = (body: object) =>
+      app.request(
+        `/api/content/${both.video_id}/tests`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+        env
+      );
+    await post({ test_type: 'title', start_date: '2026-07-15', variants: [{ value: 'A' }, { value: 'B' }] });
+    await post({
+      test_type: 'thumbnail',
+      status: 'conclusive',
+      start_date: '2026-07-01',
+      end_date: '2026-07-10',
+      variants: [{ value: 'thumb' }],
+    });
+
+    const rows = (await (await app.request('/api/content', {}, env)).json()) as any[];
+    const row = rows.find((r) => r.video_id === 'both');
+    expect(row.title_test_end_date).toBeNull();
+    expect(row.thumbnail_test_status).toBe('conclusive');
+    expect(row.thumbnail_test_end_date).toBe('2026-07-10');
+  });
+
   it('fetches one content piece with its links and messages', async () => {
     const content = await createContent();
     await app.request(

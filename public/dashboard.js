@@ -66,9 +66,9 @@ async function initDashboard() {
     titleTd.appendChild(dateDiv);
     tr.appendChild(titleTd);
 
-    // Title-test status
+    // Test status (title / thumbnail)
     const testTd = document.createElement('td');
-    testTd.appendChild(titleTestBadge(item));
+    testTd.appendChild(testBadges(item));
     tr.appendChild(testTd);
 
     return tr;

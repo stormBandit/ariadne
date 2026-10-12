@@ -124,6 +124,11 @@ const TITLE_TEST_ICON =
   '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" xmlns="http://www.w3.org/2000/svg">' +
   '<path d="M4 6h16M4 12h10M4 18h13" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>';
 
+const THUMBNAIL_TEST_ICON =
+  '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+  '<rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" stroke-width="2.5"/>' +
+  '<path d="M3 16l5-5 4 4 3-3 6 6" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/></svg>';
+
 function iconBadge(className, label, iconMarkup, tooltip) {
   const span = document.createElement('span');
   span.className = `badge badge-icon ${className}`;
@@ -139,25 +144,171 @@ function iconBadge(className, label, iconMarkup, tooltip) {
   return span;
 }
 
-// Derives a title-test badge from the most recently created title test for
-// a video (if any). A test with no end_date yet is treated as still running.
-function titleTestBadge(item) {
-  let className;
+// Derives a badge for the most recently created test of the given type
+// ('title' | 'thumbnail') for a video. A test with no end_date yet is treated
+// as still running. Returns null if the video has no test of that type.
+function testBadge(item, type) {
+  const status = item[`${type}_test_status`];
+  if (!status) return null;
+  let state;
   let label;
-  if (!item.title_test_status) {
-    className = 'title-test-none';
-    label = 'None';
-  } else if (!item.title_test_end_date) {
-    className = 'title-test-progress';
+  if (!item[`${type}_test_end_date`]) {
+    state = 'progress';
     label = 'In Progress';
-  } else if (item.title_test_status === 'conclusive') {
-    className = 'title-test-conclusive';
+  } else if (status === 'conclusive') {
+    state = 'conclusive';
     label = 'Conclusive';
   } else {
-    className = 'title-test-inconclusive';
+    state = 'inconclusive';
     label = 'Inconclusive';
   }
-  return iconBadge(className, label, TITLE_TEST_ICON, 'Title Test Status');
+  const typeLabel = type === 'title' ? 'Title' : 'Thumbnail';
+  const icon = type === 'title' ? TITLE_TEST_ICON : THUMBNAIL_TEST_ICON;
+  const badge = iconBadge(`test-${state}`, label, icon);
+  badge.setAttribute('aria-label', `${typeLabel} test: ${label}`);
+  badge.tabIndex = 0;
+  attachTestTooltip(badge, item.video_id, type, typeLabel, label);
+  return badge;
+}
+
+// Hover/focus tooltip summarising the latest test of a type. Full test rows
+// aren't in the list payload, so they're fetched lazily and cached per video.
+const testDetailCache = new Map();
+let testTooltipEl = null;
+let testTooltipHideTimer = null;
+
+function hideTestTooltip() {
+  if (testTooltipEl) {
+    testTooltipEl.style.display = 'none';
+    testTooltipEl.dataset.owner = '';
+  }
+}
+
+// Short delay so the cursor can cross the gap from badge to tooltip; the
+// tooltip itself cancels the timer, which keeps it open for text selection.
+function scheduleHideTestTooltip() {
+  clearTimeout(testTooltipHideTimer);
+  testTooltipHideTimer = setTimeout(hideTestTooltip, 150);
+}
+
+function fetchTestDetail(videoId) {
+  if (!testDetailCache.has(videoId)) {
+    const p = fetch(`/api/content/${encodeURIComponent(videoId)}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('failed'))))
+      .catch((err) => {
+        testDetailCache.delete(videoId);
+        throw err;
+      });
+    testDetailCache.set(videoId, p);
+  }
+  return testDetailCache.get(videoId);
+}
+
+function buildTestTooltipBody(el, content, type, typeLabel, label) {
+  el.textContent = '';
+  const head = document.createElement('div');
+  head.className = 'test-tooltip-head';
+  head.textContent = `${typeLabel} test · ${label}`;
+  el.appendChild(head);
+
+  const tests = (content.tests || []).filter((t) => t.test_type === type);
+  const test = tests[tests.length - 1]; // tests are ordered by created_at
+  if (!test) {
+    el.appendChild(document.createTextNode('No details available.'));
+    return;
+  }
+  const dates = formatDateRange(test.start_date, test.end_date);
+  if (dates) {
+    const d = document.createElement('div');
+    d.className = 'test-tooltip-dates';
+    d.textContent = dates;
+    el.appendChild(d);
+  }
+  if (test.notes) {
+    const n = document.createElement('div');
+    n.className = 'test-tooltip-notes';
+    n.textContent = test.notes;
+    el.appendChild(n);
+  }
+  for (const v of test.variants || []) {
+    const row = document.createElement('div');
+    row.className = 'test-tooltip-variant';
+    if (type === 'thumbnail') {
+      const img = document.createElement('img');
+      img.src = v.value;
+      img.alt = '';
+      row.appendChild(img);
+    } else {
+      const t = document.createElement('span');
+      t.textContent = v.value;
+      row.appendChild(t);
+    }
+    const share = document.createElement('span');
+    share.className = 'share';
+    share.textContent =
+      v.watch_time_share !== null && v.watch_time_share !== undefined ? `${v.watch_time_share}%` : '—';
+    row.appendChild(share);
+    el.appendChild(row);
+  }
+}
+
+function attachTestTooltip(badge, videoId, type, typeLabel, label) {
+  const show = () => {
+    if (!testTooltipEl) {
+      testTooltipEl = document.createElement('div');
+      testTooltipEl.className = 'test-tooltip';
+      testTooltipEl.setAttribute('role', 'tooltip');
+      testTooltipEl.addEventListener('mouseenter', () => clearTimeout(testTooltipHideTimer));
+      testTooltipEl.addEventListener('mouseleave', scheduleHideTestTooltip);
+      document.body.appendChild(testTooltipEl);
+    }
+    clearTimeout(testTooltipHideTimer);
+    const el = testTooltipEl;
+    el.dataset.owner = `${videoId}:${type}`;
+    el.textContent = 'Loading…';
+    el.style.display = 'block';
+    const place = () => {
+      const r = badge.getBoundingClientRect();
+      // At least as wide as the badge so every part of it sits directly above
+      // the popup, even while it only says "Loading…".
+      el.style.minWidth = `${r.width}px`;
+      const w = el.offsetWidth;
+      const left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8));
+      const below = r.bottom + 6 + el.offsetHeight <= window.innerHeight;
+      el.style.left = `${left}px`;
+      el.style.top = `${below ? r.bottom + 6 : Math.max(8, r.top - 6 - el.offsetHeight)}px`;
+    };
+    place();
+    fetchTestDetail(videoId)
+      .then((content) => {
+        if (el.dataset.owner !== `${videoId}:${type}`) return;
+        buildTestTooltipBody(el, content, type, typeLabel, label);
+        place();
+      })
+      .catch(() => {
+        if (el.dataset.owner !== `${videoId}:${type}`) return;
+        el.textContent = 'Could not load test details.';
+        place();
+      });
+  };
+  badge.addEventListener('mouseenter', show);
+  badge.addEventListener('mouseleave', scheduleHideTestTooltip);
+  badge.addEventListener('focus', show);
+  badge.addEventListener('blur', scheduleHideTestTooltip);
+}
+
+// Test column: one badge per test type that has been run on the video, or a
+// single "None" badge if neither has.
+function testBadges(item) {
+  const wrap = document.createElement('div');
+  wrap.className = 'test-badges';
+  const badges = ['title', 'thumbnail'].map((t) => testBadge(item, t)).filter(Boolean);
+  if (badges.length === 0) {
+    wrap.appendChild(iconBadge('test-none', 'None', '', 'No tests run'));
+  } else {
+    badges.forEach((b) => wrap.appendChild(b));
+  }
+  return wrap;
 }
 
 function formatDate(value) {

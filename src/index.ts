@@ -11,16 +11,19 @@ type Bindings = {
 const app = new Hono<{ Bindings: Bindings }>();
 
 app.get('/api/content', async (c) => {
-  // title_test_status/title_test_end_date reflect the most recently created
-  // title test for the video (if any) — the dashboard derives the "In
-  // Progress / None / Inconclusive / Conclusive" badge from these two
-  // columns rather than joining full test rows.
+  // {title,thumbnail}_test_status/_end_date reflect the most recently created
+  // test of each type for the video (if any) — the dashboard derives the
+  // "In Progress / Inconclusive / Conclusive" badges from these columns
+  // rather than joining full test rows.
+  const latest = (type: string, col: string) =>
+    `(SELECT t.${col} FROM tests t WHERE t.content_id = v.video_id AND t.test_type = '${type}'
+        ORDER BY t.created_at DESC, t.id DESC LIMIT 1)`;
   const { results } = await c.env.DB.prepare(
     `SELECT v.*,
-       (SELECT t.status FROM tests t WHERE t.content_id = v.video_id AND t.test_type = 'title'
-        ORDER BY t.created_at DESC, t.id DESC LIMIT 1) AS title_test_status,
-       (SELECT t.end_date FROM tests t WHERE t.content_id = v.video_id AND t.test_type = 'title'
-        ORDER BY t.created_at DESC, t.id DESC LIMIT 1) AS title_test_end_date
+       ${latest('title', 'status')} AS title_test_status,
+       ${latest('title', 'end_date')} AS title_test_end_date,
+       ${latest('thumbnail', 'status')} AS thumbnail_test_status,
+       ${latest('thumbnail', 'end_date')} AS thumbnail_test_end_date
      FROM youtube_videos v
      ORDER BY v.publish_date DESC NULLS LAST, v.created_at DESC`
   ).all();
